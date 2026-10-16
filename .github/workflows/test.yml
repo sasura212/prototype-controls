@@ -1,0 +1,34 @@
+name: test
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # The runner's own Chrome. tour.mjs looks here anyway; named so the dependency is plain.
+      CHROME_PATH: /usr/bin/google-chrome
+      # The runner can't give Chrome its sandbox, and Chrome won't start without one unless told.
+      PROTOTYPE_CHROME_ARGS: --no-sandbox
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      # A failed run's screens: the last tour, and the page as it was when a play-through check failed.
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shots
+          path: test/fixture/.prototype/shots/
+          if-no-files-found: ignore

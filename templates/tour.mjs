@@ -2,7 +2,8 @@
 // The screenshot tour, run by the player's server (or by hand): a headless Chrome of its own walks the
 // flow through the player and takes a real screenshot of every step and every error, at 2× pixel
 // density so text is sharp. Local only, like the rest of `.prototype/`. Needs Node 22+ (built-in
-// WebSocket) and a Chrome or Edge on the machine (or CHROME_PATH).
+// WebSocket) and a Chrome or Edge on the machine (or CHROME_PATH). PROTOTYPE_CHROME_ARGS adds flags of
+// its own, space-separated (a CI runner may need --no-sandbox).
 //
 //   node .prototype/tour.mjs                         the dev server at http://localhost:5173, 1440 × 900
 //   node .prototype/tour.mjs http://localhost:5187 --width 390 --height 844 --scale 3
@@ -23,8 +24,11 @@ const slug = (text) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
 
+/** Flags for Chrome on top of the usual ones, from PROTOTYPE_CHROME_ARGS. None unless it's set. */
+export const extraChromeArgs = () => (process.env.PROTOTYPE_CHROME_ARGS ?? "").split(/\s+/).filter(Boolean);
+
 /** A Chrome to drive: CHROME_PATH, the usual install places, or Playwright's download. */
-const findChrome = () => {
+export const findChrome = () => {
   const home = os.homedir();
   const versioned = (dir, tail) => {
     try {
@@ -59,7 +63,7 @@ const findChrome = () => {
 };
 
 /** A minimal Chrome DevTools Protocol client over the browser's WebSocket. */
-const connect = async (wsUrl) => {
+export const connect = async (wsUrl) => {
   const socket = new WebSocket(wsUrl);
   await new Promise((resolve, reject) => {
     socket.addEventListener("open", resolve, { once: true });
@@ -108,6 +112,7 @@ export const runTour = async ({ origin, width = 1440, height = 900, scale = 2, o
       "--no-default-browser-check",
       "--hide-scrollbars",
       `--window-size=${width},${height}`,
+      ...extraChromeArgs(),
       "about:blank",
     ],
     { stdio: ["ignore", "ignore", "pipe"] }

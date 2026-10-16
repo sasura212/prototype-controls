@@ -15,6 +15,8 @@ type Shot = {
   diff?: number | null;
   diffFile?: string | null;
   issues: Issue[];
+  /** An error's path id, as the script has it (its name is a slug of it). Older tours don't say. */
+  path?: string;
 };
 type Manifest = { run: string; at: string; viewport: string; shots: Shot[] };
 type Item = Shot & { before: string | null; diff: number | null; comments: Comment[]; ms: number | null };
@@ -64,7 +66,7 @@ const items: Item[] = manifest.shots.map((shot) => ({
   before: shot.before ?? previous?.shots.find((old) => old.name === shot.name)?.file ?? null,
   diff: shot.diff ?? null,
   comments: comments.filter((c) =>
-    shot.kind === "step" ? c.step === shot.title && !c.path : c.path === shot.name.replace(/^error-/, "")
+    shot.kind === "step" ? c.step === shot.title && !c.path : c.path === (shot.path ?? shot.name.replace(/^error-/, ""))
   ),
   ms: shot.kind === "step" ? (timing[shot.title] ?? null) : null,
 }));
@@ -194,7 +196,7 @@ function drawChips() {
 const marks = (item: Item) => {
   const out: string[] = [];
   const l = level(item.diff);
-  if (l === "changed") out.push(`<span class="mark changed">${item.diff}% changed</span>`);
+  if (l === "changed") out.push(`<span class="mark changed">${escape(String(item.diff))}% changed</span>`);
   if (l === "slight") out.push(`<span class="mark slight">slight change</span>`);
   if (l === "new") out.push(`<span class="mark new">new</span>`);
   if (item.issues.length) out.push(`<span class="mark issues">${item.issues.length} to check</span>`);
@@ -331,7 +333,7 @@ function drawInspector() {
   const changed =
     l === "new"
       ? "<p>New this tour: nothing to compare with yet.</p>"
-      : `<div class="big">${item.diff}%</div><p>${
+      : `<div class="big">${escape(String(item.diff))}%</div><p>${
           l === "changed"
             ? "of the screen changed since the tour before."
             : l === "slight"

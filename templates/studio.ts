@@ -295,6 +295,6 @@ recordButton.addEventListener("click", async () => {
     say("Recording. Play the flow in the frame, then stop.");
     (await player()).play();
   } catch (error) {
-    say(`Couldn't record: ${error instanceof Error ? error.message : String(error)}`);
+    say(`Couldn't record: ${escapeHtml(error instanceof Error ? error.message : String(error))}`);
   }
 });

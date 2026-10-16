@@ -107,19 +107,29 @@ browser. See the top of `templates/comment.mjs`.
 
 ## What's inside
 
-| File                                    | What it is                                                              |
-| --------------------------------------- | ----------------------------------------------------------------------- |
-| `SKILL.md`                              | The steps Claude follows                                                |
-| `templates/overlay.ts` + `overlay.css`  | The player, the page's clock, and the ⚗ panel                           |
-| `templates/comments.ts` + `comment.mjs` | Comments on the page, and their store and command line                  |
-| `templates/checks.ts`                   | Check this screen                                                       |
-| `templates/studio.*` + `sheet.*`        | The studio and the flow review                                          |
-| `templates/tour.mjs`                    | The screenshot tour, in a headless Chrome of its own                    |
-| `templates/vite.config.mjs`             | Adds the player to the page, and saves what it makes into `.prototype/` |
-| `templates/check-wait.js`               | What Claude runs in the browser to check each step and error            |
-| `templates/script.ts`                   | An example script                                                       |
+| File                                    | What it is                                                               |
+| --------------------------------------- | ------------------------------------------------------------------------ |
+| `SKILL.md`                              | The steps Claude follows                                                 |
+| `templates/overlay.ts` + `overlay.css`  | The player, the page's clock, and the ⚗ panel                            |
+| `templates/comments.ts` + `comment.mjs` | Comments on the page, and their store and command line                   |
+| `templates/checks.ts`                   | Check this screen                                                        |
+| `templates/studio.*` + `sheet.*`        | The studio and the flow review                                           |
+| `templates/tour.mjs`                    | The screenshot tour, in a headless Chrome of its own                     |
+| `templates/vite.config.mjs`             | Adds the player to the page, and saves what it makes into `.prototype/`  |
+| `templates/check-wait.js`               | What Claude runs in the browser to check each step and error             |
+| `templates/script.ts`                   | An example script                                                        |
+| `test/`                                 | A small fixture flow, the dev-server security checks, and a play-through |
+| `package.json`                          | Dev dependencies (Vite, TypeScript) and the `check` and `test` scripts   |
+
+To work on the skill itself: `npm install`, then `npm run check` type-checks `templates/` and the
+fixture, and `npm test` runs the security checks and plays the fixture in a headless Chrome (needs a
+Chrome or Edge, or `CHROME_PATH`).
 
 Works with Vite projects. Previous replays from the start to the step before (in seconds), since
 a page can't be wound back. Recording captures the tab with Chrome's screen-share prompt, once per
 session; screenshots don't need it. Screenshot tours need Node 22+ and a Chrome or Edge installed
 (or `CHROME_PATH`). Pause and speed cover timers, `Date.now` and animations, not `new Date()`.
+
+## License
+
+MIT, see [LICENSE](LICENSE).

@@ -1,0 +1,20 @@
+node_modules/
+
+# test/fixture.mjs copies these in from templates/ before each run; only script.ts is the fixture's own.
+/test/fixture/.prototype/check-wait.js
+/test/fixture/.prototype/checks.ts
+/test/fixture/.prototype/comment.mjs
+/test/fixture/.prototype/comments.ts
+/test/fixture/.prototype/icons.ts
+/test/fixture/.prototype/overlay.css
+/test/fixture/.prototype/overlay.ts
+/test/fixture/.prototype/sheet.html
+/test/fixture/.prototype/sheet.ts
+/test/fixture/.prototype/studio.html
+/test/fixture/.prototype/studio.ts
+/test/fixture/.prototype/tour.mjs
+/test/fixture/.prototype/vite.config.mjs
+# What the tests make there: screenshots, comments, timing.
+/test/fixture/.prototype/shots/
+/test/fixture/.prototype/comments.jsonl
+/test/fixture/.prototype/timing.json

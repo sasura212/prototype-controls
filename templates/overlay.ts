@@ -410,14 +410,66 @@ const until = async <T>(
   }
 };
 
-const setValue = (el: HTMLElement, value: string) => {
+const valueOf = (el: HTMLElement) => (el.isContentEditable ? (el.textContent ?? "") : (el as HTMLInputElement).value);
+const setValue = (el: HTMLElement, value: string, data: string | null = null) => {
   if (el.isContentEditable) el.textContent = value;
   else {
     // React tracks the value itself: set it through the native setter so the change is seen.
     const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
     Object.getOwnPropertyDescriptor(proto, "value")?.set?.call(el, value);
   }
-  el.dispatchEvent(new Event("input", { bubbles: true }));
+  el.dispatchEvent(
+    new InputEvent("input", {
+      bubbles: true,
+      composed: true,
+      inputType: data === null ? "deleteContent" : "insertText",
+      data,
+    })
+  );
+};
+/** A key event as the keyboard sends it. False when the page cancelled it (preventDefault). */
+const sendKey = (el: Element, type: string, name: string) =>
+  el.dispatchEvent(new KeyboardEvent(type, { key: name, bubbles: true, cancelable: true, composed: true }));
+/**
+ * A press with the mouse, the whole way a browser sends it: over, down, focus, up, then one click,
+ * at the element's centre. Menus (Radix DropdownMenu) open on pointerdown; most things on click.
+ */
+const mouseClick = (el: HTMLElement) => {
+  const rect = el.getBoundingClientRect();
+  const at = {
+    clientX: rect.left + rect.width / 2,
+    clientY: rect.top + rect.height / 2,
+    screenX: screenX + rect.left + rect.width / 2,
+    screenY: screenY + rect.top + rect.height / 2,
+    button: 0,
+    bubbles: true,
+    cancelable: true,
+    composed: true,
+    view: window,
+  };
+  const pointer = { ...at, pointerId: 1, pointerType: "mouse", isPrimary: true };
+  el.dispatchEvent(new PointerEvent("pointerover", pointer));
+  el.dispatchEvent(new PointerEvent("pointerenter", { ...pointer, bubbles: false, cancelable: false }));
+  // A cancelled pointerdown holds back the mouse events that follow it, but not the click.
+  const isDown = el.dispatchEvent(new PointerEvent("pointerdown", { ...pointer, buttons: 1 }));
+  if (isDown && el.dispatchEvent(new MouseEvent("mousedown", { ...at, buttons: 1, detail: 1 }))) {
+    const focusable = el.closest<HTMLElement>("a[href], button, input, select, textarea, summary, [tabindex]");
+    if (focusable) focusable.focus();
+    else (document.activeElement as HTMLElement | null)?.blur();
+  }
+  el.dispatchEvent(new PointerEvent("pointerup", pointer));
+  if (isDown) el.dispatchEvent(new MouseEvent("mouseup", { ...at, detail: 1 }));
+  el.dispatchEvent(new MouseEvent("click", { ...at, detail: 1 }));
+};
+const FOCUSABLE =
+  "a[href], button, input:not([type=hidden]), select, textarea, summary, [tabindex], [contenteditable=true]";
+/** Tab: focus moves to the next thing in the page's order. */
+// ponytail: document order only; positive tabindex values and shadow roots aren't ordered the way a browser would.
+const tabForward = () => {
+  const all = [...document.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
+    (el) => el.tabIndex >= 0 && !(el as HTMLButtonElement).disabled && isShown(el)
+  );
+  all[(all.indexOf(document.activeElement as HTMLElement) + 1) % all.length]?.focus();
 };
 
 const pageFor = (mine: number): Page => {
@@ -456,7 +508,7 @@ const pageFor = (mine: number): Page => {
       el.scrollIntoView({ block: "nearest" });
       ringAt(el);
       await sleep(250, mine);
-      el.click();
+      mouseClick(el);
     },
     async type(target, text) {
       await beforeAct();
@@ -469,20 +521,58 @@ const pageFor = (mine: number): Page => {
       );
       el.scrollIntoView({ block: "nearest" });
       el.focus();
-      if (isSkipping()) setValue(el, text);
-      else
-        for (let i = 1; i <= text.length; i++) {
-          await gate(mine);
-          setValue(el, text.slice(0, i));
-          await sleep(35 / state.rate, mine);
+      // Typing replaces what's there, like selecting it all first.
+      let field = el;
+      let fresh = true;
+      for (const char of text) {
+        // Skipping: no pause between keys, but the same events, so the page sees typing either way.
+        await gate(mine);
+        // Each key the page can cancel, as a browser lets it: then the character doesn't go in.
+        if (sendKey(field, "keydown", char)) {
+          const before = fresh ? "" : valueOf(field);
+          const isFull =
+            (field as HTMLInputElement).maxLength > 0 && before.length >= (field as HTMLInputElement).maxLength;
+          const isAllowed = field.dispatchEvent(
+            new InputEvent("beforeinput", {
+              inputType: "insertText",
+              data: char,
+              bubbles: true,
+              cancelable: true,
+              composed: true,
+            })
+          );
+          if (isAllowed && !isFull) {
+            if (fresh && valueOf(field)) setValue(field, "");
+            setValue(field, before + char, char);
+            fresh = false;
+          }
         }
-      el.dispatchEvent(new Event("change", { bubbles: true }));
+        sendKey(field, "keyup", char);
+        // A code split over one-character boxes: the page moves focus on, and typing follows it.
+        if ((field as HTMLInputElement).maxLength === 1) {
+          if (isSkipping()) await realSleep(0);
+          const next = document.activeElement as HTMLElement | null;
+          if (next && next !== field && next.matches(FIELDS)) {
+            field.dispatchEvent(new Event("change", { bubbles: true }));
+            field = next;
+            fresh = true;
+          }
+        }
+        await sleep(35 / state.rate, mine);
+      }
+      field.dispatchEvent(new Event("change", { bubbles: true }));
     },
     async press(key) {
       await gate(mine);
       const el = (document.activeElement as HTMLElement | null) ?? document.body;
-      for (const type of ["keydown", "keyup"]) el.dispatchEvent(new KeyboardEvent(type, { key, bubbles: true }));
-      if (key === "Enter" && el instanceof HTMLInputElement) el.form?.requestSubmit();
+      if (sendKey(el, "keydown", key)) {
+        // Printable keys (and Enter) send a keypress too; what a key does happens only if keydown wasn't cancelled.
+        if (key.length === 1 || key === "Enter") sendKey(el, "keypress", key);
+        if (key === "Tab") tabForward();
+        if (key === "Enter" && el instanceof HTMLInputElement) el.form?.requestSubmit();
+      }
+      // The key comes up wherever focus is now (after Tab, the next field).
+      sendKey(document.activeElement ?? document.body, "keyup", key);
     },
     waitFor,
     async skipUntil(target, timeoutMs) {
@@ -676,21 +766,27 @@ const ring = $<HTMLDivElement>(".ring");
 const jumpSelect = $<HTMLSelectElement>("[data-do=jump]");
 const pathSelect = $<HTMLSelectElement>("[data-do=path]");
 const scenarioSelect = $<HTMLSelectElement>("[data-do=scenario]");
-jumpSelect.innerHTML = script.chapters.map((c, i) => `<option value="${i}">${i + 1} · ${c.title}</option>`).join("");
+jumpSelect.innerHTML = script.chapters
+  .map((c, i) => `<option value="${i}">${i + 1} · ${escapeHtml(c.title)}</option>`)
+  .join("");
 pathSelect.innerHTML = [
   `<option value="">None: the usual flow</option>`,
-  ...(script.paths ?? []).map((p) => `<option value="${p.id}">${p.label}</option>`),
+  ...(script.paths ?? []).map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.label)}</option>`),
   ...(script.unreachable?.length
     ? [
         `<optgroup label="Can't be shown from outside the flow">`,
-        ...script.unreachable.map((u) => `<option disabled title="${u.why}">${u.label}: ${u.why}</option>`),
+        ...script.unreachable.map(
+          (u) => `<option disabled title="${escapeHtml(u.why)}">${escapeHtml(u.label)}: ${escapeHtml(u.why)}</option>`
+        ),
         `</optgroup>`,
       ]
     : []),
 ].join("");
 scenarioSelect.innerHTML = [
   `<option value="">As it is</option>`,
-  ...(script.scenarios ?? []).map((item) => `<option value="${item.id}">${item.label}</option>`),
+  ...(script.scenarios ?? []).map(
+    (item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.label)}</option>`
+  ),
 ].join("");
 $<HTMLElement>(".scenarios").hidden = !script.scenarios?.length;
 $<HTMLElement>(".bar").innerHTML = script.chapters.map(() => "<span></span>").join("");
@@ -754,8 +850,8 @@ function render() {
   const suggest = $<HTMLElement>(".suggest");
   suggest.hidden = !suggestions;
   if (suggestions) {
-    suggest.innerHTML = `<p>Can't find “${suggestions.target}”. Use one of these instead?</p>${suggestions.options
-      .map((option) => `<button data-alias="${option.replace(/"/g, "&quot;")}">${option}</button>`)
+    suggest.innerHTML = `<p>Can't find “${escapeHtml(suggestions.target)}”. Use one of these instead?</p>${suggestions.options
+      .map((option) => `<button data-alias="${escapeHtml(option)}">${escapeHtml(option)}</button>`)
       .join("")}`;
     openPanel("play");
   }
@@ -765,11 +861,13 @@ function render() {
     issues === null
       ? ""
       : issues.length
-        ? issues.map((issue, i) => `<li data-issue="${i}">${issue.message}</li>`).join("")
+        ? issues.map((issue, i) => `<li data-issue="${i}">${escapeHtml(issue.message)}</li>`).join("")
         : "<li>Nothing found on this screen.</li>";
   const times = Object.entries(timings);
   $<HTMLElement>(".timing ul").innerHTML = times.length
-    ? times.map(([title, ms]) => `<li><span>${title}</span><span>${(ms / 1000).toFixed(1)}s</span></li>`).join("")
+    ? times
+        .map(([title, ms]) => `<li><span>${escapeHtml(title)}</span><span>${(ms / 1000).toFixed(1)}s</span></li>`)
+        .join("")
     : "<li>Play the flow at any speed to time each step.</li>";
   comments?.redraw();
 }
@@ -847,8 +945,10 @@ function drawCommentList() {
         .join("")
     : `<li class="empty">${commentFilter === "open" ? "No open comments." : "Nothing here yet."}</li>`;
 }
-const escapeHtml = (text: string) =>
-  text.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] ?? c);
+// A declaration, not a const: the bar's lists are filled (escaped) before this line runs.
+function escapeHtml(text: string) {
+  return text.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] ?? c);
+}
 root.addEventListener("click", (event) => {
   const el = (event.target as HTMLElement).closest<HTMLElement>(
     "[data-tab], [data-rate], [data-filter], [data-comment]"
