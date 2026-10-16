@@ -1,0 +1,180 @@
+/* The prototype player: a video's control bar, dark and floating, out of the flow's way. */
+:host {
+  --ink: #fff;
+  --ground: #101828;
+  --hover: #1d2939;
+  --accent: #84adff;
+  --warn: #fdb022;
+  all: initial;
+}
+
+.player {
+  position: fixed;
+  z-index: 2147483000;
+  bottom: 16px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 6px 8px;
+  border-radius: 999px;
+  background: var(--ground);
+  color: var(--ink);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.24);
+  font:
+    12px/1.4 system-ui,
+    sans-serif;
+}
+
+.left {
+  left: 16px;
+}
+
+.right {
+  right: 16px;
+}
+
+.centre {
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.buttons {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+
+button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink);
+  font:
+    13px system-ui,
+    sans-serif;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+button:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.play,
+.play:hover:not(:disabled) {
+  background: var(--ink);
+  color: var(--ground);
+}
+
+.now {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 14rem;
+}
+
+.label,
+.note {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.note {
+  color: var(--accent);
+}
+
+.note:empty {
+  display: none;
+}
+
+.note.stuck {
+  color: var(--warn);
+}
+
+.bar {
+  display: flex;
+  gap: 2px;
+}
+
+.bar span {
+  flex: 1;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--hover);
+  transition: background-color 160ms ease;
+}
+
+.bar .done {
+  background: var(--ink);
+}
+
+.bar .current {
+  background: var(--accent);
+}
+
+/* Jump to a chapter, or play an error path: above the bar. */
+.controls {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 16rem;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--ground);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.24);
+}
+
+.controls[hidden] {
+  display: none;
+}
+
+.controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: #d0d5dd;
+}
+
+select {
+  padding: 6px 8px;
+  border: 1px solid var(--hover);
+  border-radius: 8px;
+  background: var(--hover);
+  color: var(--ink);
+  font: inherit;
+}
+
+/* Where a click lands. */
+.ring {
+  position: fixed;
+  z-index: 2147482999;
+  display: none;
+  border: 2px solid var(--accent);
+  border-radius: 10px;
+  box-shadow: 0 0 0 4px rgb(132 173 255 / 0.25);
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bar span {
+    transition: none;
+  }
+}
