@@ -5,6 +5,7 @@
 //   /__prototype/studio       the app in a frame: viewport sizes, recording, the screenshot tour
 //   /__prototype/sheet        the flow review from the last screenshot tour
 //   /__prototype/comments     GET the comments, POST a comment, reply, resolve (see comment.mjs)
+//   /__prototype/tour         POST to start the screenshot tour (tour.mjs), GET its progress
 //   /__prototype/file?path=   GET or POST a file under .prototype/ (screenshots, recordings, reports)
 //   /__prototype/list?dir=    the files in a folder under .prototype/
 import fs from "node:fs";
@@ -39,6 +40,9 @@ const TYPES = { ".png": "image/png", ".webm": "video/webm", ".mp4": "video/mp4",
 
 // Loaded when the server starts, not bundled with this config: it finds its file from its own location.
 const comments = () => import(pathToFileURL(path.join(here, "comment.mjs")).href);
+const tours = () => import(pathToFileURL(path.join(here, "tour.mjs")).href);
+/** The screenshot tour in progress (one at a time), for the studio to show. */
+let tour = { running: false, done: 0, total: 0, label: "", error: null, run: null };
 
 const api = async (req, res, next) => {
   const url = new URL(req.url ?? "/", "http://local");
@@ -54,6 +58,18 @@ const api = async (req, res, next) => {
       const event = JSON.parse((await body(req)).toString("utf8"));
       const id = event.type === "comment" ? nextId(readEvents()) : event.id;
       return send(res, 200, append({ ...event, id }));
+    }
+    if (route === "tour") {
+      if (req.method === "GET") return send(res, 200, tour);
+      if (tour.running) return send(res, 409, tour);
+      const options = JSON.parse((await body(req)).toString("utf8") || "{}");
+      const { runTour } = await tours();
+      tour = { running: true, done: 0, total: 0, label: "Starting Chrome", error: null, run: null };
+      runTour({ origin: `http://${req.headers.host}`, ...options, onProgress: (p) => Object.assign(tour, p) }).then(
+        (manifest) => Object.assign(tour, { running: false, run: manifest.run }),
+        (error) => Object.assign(tour, { running: false, error: String(error?.message ?? error) })
+      );
+      return send(res, 202, tour);
     }
     if (route === "file") {
       const file = inside(url.searchParams.get("path"));

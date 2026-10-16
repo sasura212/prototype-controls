@@ -17,15 +17,6 @@ type Player = {
   audit: () => Issue[];
   result: () => Result;
 };
-type Shot = {
-  name: string;
-  kind: "step" | "error";
-  title: string;
-  file: string;
-  diff: number | null;
-  diffFile: string | null;
-  issues: Issue[];
-};
 
 const frame = document.querySelector<HTMLIFrameElement>("iframe")!;
 const status = document.querySelector<HTMLElement>("#status")!;
@@ -43,18 +34,8 @@ frame.src = script.start;
 
 const say = (html: string) => (status.innerHTML = html);
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-const frames = (count: number) =>
-  new Promise<void>((resolve) => {
-    const step = (left: number) => (left ? requestAnimationFrame(() => step(left - 1)) : resolve());
-    step(count);
-  });
 const save = (relative: string, data: BodyInit) =>
   fetch(`/__prototype/file?path=${encodeURIComponent(relative)}`, { method: "POST", body: data });
-const slug = (text: string) =>
-  text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
 
 // ------------------------------------------------------------------------------------------------
 // The frame's size: fit to the window, a device from the list, typed in, or dragged by its edges.
@@ -164,6 +145,27 @@ device.addEventListener("pointerdown", (event) => {
   handle.addEventListener("pointerup", end);
   handle.addEventListener("pointercancel", end);
 });
+// A focused handle moves with the arrow keys: 10px a press, 1px with Alt.
+device.addEventListener("keydown", (event) => {
+  const handle = (event.target as HTMLElement).closest<HTMLElement>("[data-resize]");
+  if (!handle) return;
+  const axis = handle.dataset.resize!;
+  const step = event.altKey ? 1 : 10;
+  const current = size ?? { width: Number(widthField.value), height: Number(heightField.value) };
+  const deltas: Record<string, [number, number]> = {
+    ArrowRight: [step, 0],
+    ArrowLeft: [-step, 0],
+    ArrowDown: [0, step],
+    ArrowUp: [0, -step],
+  };
+  const delta = deltas[event.key];
+  if (!delta) return;
+  event.preventDefault();
+  setSize({
+    width: current.width + (axis.includes("x") ? delta[0] : 0),
+    height: current.height + (axis.includes("y") ? delta[1] : 0),
+  });
+});
 addEventListener("resize", applySize);
 applySize();
 
@@ -175,18 +177,6 @@ const player = async (): Promise<Player> => {
     await sleep(100);
   }
   throw new Error("The player didn't load in the frame");
-};
-/** Waits until the player has stopped: paused where it was headed, done, or stuck for a while. */
-const settled = async () => {
-  let stuckSince: number | null = null;
-  for (let waited = 0; waited < 120_000; waited += 250) {
-    await sleep(250);
-    const result = (await player()).result();
-    stuckSince = result.waitingFor ? (stuckSince ?? waited) : null;
-    if (!result.skipping && (result.paused || result.done || (stuckSince !== null && waited - stuckSince > 30_000)))
-      return result;
-  }
-  return (await player()).result();
 };
 
 // Capture: the tab as a video stream, drawn cropped to the frame.
@@ -227,108 +217,41 @@ const draw = (canvas: HTMLCanvasElement) => {
       canvas.height
     );
 };
-const png = (canvas: HTMLCanvasElement) =>
-  new Promise<Blob>((resolve) => canvas.toBlob((blob) => resolve(blob!), "image/png"));
-
-/** How much of the screen changed since the last tour, and a picture of where. */
-const compare = async (current: HTMLCanvasElement, name: string) => {
-  const previous = await fetch(`/__prototype/file?path=shots/latest/${name}.png`);
-  if (!previous.ok) return { percent: null, image: null };
-  const before = await createImageBitmap(await previous.blob());
-  if (before.width !== current.width || before.height !== current.height) return { percent: 100, image: null };
-  const old = document.createElement("canvas");
-  [old.width, old.height] = [before.width, before.height];
-  const oldContext = old.getContext("2d")!;
-  oldContext.drawImage(before, 0, 0);
-  const a = oldContext.getImageData(0, 0, old.width, old.height).data;
-  const b = current.getContext("2d")!.getImageData(0, 0, current.width, current.height).data;
-  const out = document.createElement("canvas");
-  [out.width, out.height] = [current.width, current.height];
-  const outContext = out.getContext("2d")!;
-  outContext.globalAlpha = 0.25;
-  outContext.drawImage(current, 0, 0);
-  const marks = outContext.getImageData(0, 0, out.width, out.height);
-  let changed = 0;
-  for (let i = 0; i < a.length; i += 4) {
-    if (Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2]) > 48) {
-      changed++;
-      marks.data.set([240, 68, 56, 255], i);
-    }
-  }
-  outContext.putImageData(marks, 0, 0);
-  return { percent: Math.round((changed / (a.length / 4)) * 1000) / 10, image: changed ? out : null };
-};
-
-const shoot = async (run: string, name: string, kind: Shot["kind"], title: string): Promise<Shot> => {
-  const p = await player();
-  const issues = p.audit();
-  p.setHidden(true);
-  // The tab capture runs a few frames behind the page: let it catch up before drawing.
-  await sleep(350);
-  await frames(2);
-  const canvas = document.createElement("canvas");
-  draw(canvas);
-  p.setHidden(false);
-  const { percent, image } = await compare(canvas, name);
-  const file = `shots/${run}/${name}.png`;
-  const blob = await png(canvas);
-  await save(file, blob);
-  await save(`shots/latest/${name}.png`, blob);
-  const diffFile = image ? `shots/${run}/${name}.diff.png` : null;
-  if (image && diffFile) await save(diffFile, await png(image));
-  return { name, kind, title, file, diff: percent, diffFile, issues };
-};
-
+// The screenshot tour: run by the player's server in a headless Chrome of its own, at the frame's
+// size and 2× pixel density, so screenshots are sharp (the tab-capture stream is video, and blurs text).
+type Tour = { running: boolean; done: number; total: number; label: string; error: string | null; run: string | null };
 tourButton.addEventListener("click", async () => {
   tourButton.disabled = true;
   try {
-    await capture();
-    const run = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-    const shots: Shot[] = [];
-    say("Starting from the top…");
-    (await player()).restart();
-    await sleep(1500);
-    await player();
-    await sleep(2500);
-    const total = script.chapters.length + (script.paths?.length ?? 0);
-    const advance = (done: number) => (progress.style.width = `${(done / total) * 100}%`);
-    for (const [index, title] of script.chapters.map((c) => c.title).entries()) {
-      say(`Step ${index + 1} of ${script.chapters.length}: ${title}…`);
-      advance(index);
-      if (index > 0) {
-        (await player()).goTo(index);
-        await settled();
-        await sleep(400);
+    const width = Number(widthField.value);
+    const height = Number(heightField.value);
+    const started = await fetch("/__prototype/tour", {
+      method: "POST",
+      body: JSON.stringify({ width, height, scale: 2 }),
+    });
+    if (!started.ok && started.status !== 409) throw new Error(await started.text());
+    say(`Taking screenshots at ${width} × ${height}… (in the background; the frame here is free to use)`);
+    for (;;) {
+      await sleep(600);
+      const tour: Tour = await (await fetch("/__prototype/tour")).json();
+      progress.style.width = tour.total ? `${(tour.done / tour.total) * 100}%` : "4%";
+      if (tour.running) {
+        say(`${escapeHtml(tour.label)}…`);
+        continue;
       }
-      shots.push(await shoot(run, `${String(index + 1).padStart(2, "0")}-${slug(title)}`, "step", title));
+      if (tour.error) throw new Error(tour.error);
+      say(`${escapeHtml(tour.label)} · <a href="/__prototype/sheet" target="_blank">Open the review</a>`);
+      break;
     }
-    for (const [index, path] of (script.paths ?? []).entries()) {
-      say(`Error ${index + 1} of ${script.paths!.length}: ${path.label}…`);
-      advance(script.chapters.length + index);
-      (await player()).showPath(path.id);
-      await sleep(1500);
-      await settled();
-      shots.push(await shoot(run, `error-${path.id}`, "error", path.label));
-    }
-    const manifest = JSON.stringify(
-      { run, at: new Date().toISOString(), viewport: `${widthField.value} × ${heightField.value}`, shots },
-      null,
-      2
-    );
-    await save(`shots/${run}/manifest.json`, manifest);
-    await save("shots/latest/manifest.json", manifest);
-    const changed = shots.filter((shot) => (shot.diff ?? 0) >= 5).length;
-    const flagged = shots.reduce((sum, shot) => sum + shot.issues.length, 0);
-    say(
-      `${shots.length} screens saved · ${changed} changed since last time · ${flagged} things to check · <a href="/__prototype/sheet" target="_blank">Open the review</a>`
-    );
   } catch (error) {
-    say(`Stopped: ${error instanceof Error ? error.message : String(error)}`);
+    say(`Stopped: ${escapeHtml(error instanceof Error ? error.message : String(error))}`);
   } finally {
     tourButton.disabled = false;
     progress.style.width = "0";
   }
 });
+const escapeHtml = (text: string) =>
+  text.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] ?? c);
 
 // Recording: the frame drawn onto a canvas, recorded as it plays.
 let recorder: MediaRecorder | null = null;

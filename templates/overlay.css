@@ -179,6 +179,17 @@ textarea:focus-visible {
   color: var(--warn);
 }
 
+/* After a reload: one click back to the step it was on. */
+.resume {
+  display: inline;
+  padding: 0;
+  color: var(--warn);
+  font-size: 11px;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .bar {
   display: flex;
   gap: 2px;

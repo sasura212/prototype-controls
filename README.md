@@ -39,7 +39,8 @@ Run `/prototype-controls` on a flow and Claude adds a dark player bar to the pag
 - **Timing** shows how long each step takes at 1×.
 - The **studio** (`/__prototype/studio`) shows the flow at any size: drag the frame's edges or
   corner, type a width and height, or pick a device. A device bigger than the window is scaled to
-  fit. It **records** a play-through to MP4 and **screenshots every step and every error** in one go.
+  fit. It **records** a play-through to MP4 and **screenshots every step and every error** in one go:
+  sharp, at 2× pixel density, taken in a headless Chrome of its own, so the frame stays free.
 - The **flow review** (`/__prototype/sheet`) goes through those screenshots one by one: steps and
   errors in a list, the screen large in the middle, and when it changed since the last tour, side
   by side, a before/after slider, or the changes marked. Beside it: what the checks found, its
@@ -118,4 +119,5 @@ browser. See the top of `templates/comment.mjs`.
 
 Works with Vite projects. Previous replays from the start to the step before (in seconds), since
 a page can't be wound back. The studio captures the tab with Chrome's screen-share prompt, once per
-session. Pause and speed cover timers, `Date.now` and animations, not `new Date()`.
+session (screenshots don't need it). Screenshot tours need Node 22+ and a Chrome or Edge installed
+(or `CHROME_PATH`). Pause and speed cover timers, `Date.now` and animations, not `new Date()`.

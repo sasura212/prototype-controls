@@ -9,12 +9,15 @@ type Shot = {
   kind: "step" | "error";
   title: string;
   file: string;
-  diff: number | null;
-  diffFile: string | null;
+  /** The same screen in the tour before (new tours say; older ones are matched by name). */
+  before?: string | null;
+  /** Older tours worked the change out while shooting; new ones leave it to this page. */
+  diff?: number | null;
+  diffFile?: string | null;
   issues: Issue[];
 };
 type Manifest = { run: string; at: string; viewport: string; shots: Shot[] };
-type Item = Shot & { before: string | null; comments: Comment[]; ms: number | null };
+type Item = Shot & { before: string | null; diff: number | null; comments: Comment[]; ms: number | null };
 type Filter = "all" | "changed" | "issues" | "comments";
 type Compare = "screen" | "side" | "slider" | "changes";
 
@@ -58,12 +61,79 @@ const slowest = Math.max(1, ...Object.values(timing));
 
 const items: Item[] = manifest.shots.map((shot) => ({
   ...shot,
-  before: previous?.shots.find((old) => old.name === shot.name)?.file ?? null,
+  before: shot.before ?? previous?.shots.find((old) => old.name === shot.name)?.file ?? null,
+  diff: shot.diff ?? null,
   comments: comments.filter((c) =>
     shot.kind === "step" ? c.step === shot.title && !c.path : c.path === shot.name.replace(/^error-/, "")
   ),
   ms: shot.kind === "step" ? (timing[shot.title] ?? null) : null,
 }));
+
+// ------------------------------------------------------------------------------------------------
+// What changed: compared here, pixel by pixel, against the tour before.
+// ------------------------------------------------------------------------------------------------
+const load = (file: string) =>
+  new Promise<HTMLImageElement>((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = url(file);
+  });
+/** Draws both at `width` and marks what differs. Returns the share changed and the marked picture. */
+const difference = async (before: string, now: string, width?: number) => {
+  const [a, b] = await Promise.all([load(before), load(now)]);
+  if (a.naturalWidth !== b.naturalWidth || a.naturalHeight !== b.naturalHeight) return { percent: 100, marked: null };
+  const w = width ?? b.naturalWidth;
+  const h = Math.round((b.naturalHeight * w) / b.naturalWidth);
+  const draw = (img: HTMLImageElement) => {
+    const canvas = document.createElement("canvas");
+    [canvas.width, canvas.height] = [w, h];
+    const context = canvas.getContext("2d", { willReadFrequently: true })!;
+    context.drawImage(img, 0, 0, w, h);
+    return { canvas, context, data: context.getImageData(0, 0, w, h).data };
+  };
+  const old = draw(a);
+  const fresh = draw(b);
+  const out = fresh.context.getImageData(0, 0, w, h);
+  let changed = 0;
+  for (let i = 0; i < old.data.length; i += 4) {
+    const delta =
+      Math.abs(old.data[i] - fresh.data[i]) +
+      Math.abs(old.data[i + 1] - fresh.data[i + 1]) +
+      Math.abs(old.data[i + 2] - fresh.data[i + 2]);
+    if (delta > 48) {
+      changed++;
+      out.data.set([240, 68, 56, 255], i);
+    } else {
+      // The unchanged parts, faded, so the red reads.
+      for (let c = 0; c < 3; c++) out.data[i + c] = 255 - (255 - out.data[i + c]) * 0.3;
+    }
+  }
+  fresh.context.putImageData(out, 0, 0);
+  return { percent: Math.round((changed / (old.data.length / 4)) * 1000) / 10, marked: fresh.canvas };
+};
+const markedCache = new Map<string, string>();
+const marked = async (item: Item) => {
+  if (item.diffFile) return url(item.diffFile);
+  if (!item.before) return null;
+  if (!markedCache.has(item.name)) {
+    const { marked: canvas } = await difference(item.before, item.file);
+    if (canvas) markedCache.set(item.name, canvas.toDataURL("image/png"));
+  }
+  return markedCache.get(item.name) ?? null;
+};
+// The badges: a quick pass at small size for every screen that doesn't know yet.
+void (async () => {
+  for (const item of items) {
+    if (item.diff !== null || !item.before) continue;
+    try {
+      item.diff = (await difference(item.before, item.file, 480)).percent;
+    } catch {
+      item.before = null;
+    }
+  }
+  draw();
+})();
 
 const REVIEWED_KEY = `prototype-reviewed-${manifest.run}`;
 let reviewed = new Set<string>();
@@ -173,14 +243,14 @@ function drawStage() {
   $<HTMLButtonElement>("#prev").disabled = position <= 0;
   $<HTMLButtonElement>("#next").disabled = position >= list.length - 1;
 
-  const canCompare = Boolean(item.before) && level(item.diff) !== "same";
+  const canCompare = Boolean(item.before) && item.diff !== null && level(item.diff) !== "same";
   if (!canCompare) compare = "screen";
   const modes: [Compare, string][] = canCompare
     ? [
         ["screen", "Screen"],
         ["side", "Side by side"],
         ["slider", "Slider"],
-        ...(item.diffFile ? ([["changes", "Changes"]] as [Compare, string][]) : []),
+        ["changes", "Changes"],
       ]
     : [];
   $("#compare").hidden = !canCompare;
@@ -201,8 +271,18 @@ function drawStage() {
       <span class="divider"></span>
       <span class="label" style="left:10px">Before</span><span class="label" style="right:10px">Now</span></div>`;
     wireSlider();
-  } else if (compare === "changes" && item.diffFile) {
-    canvas.innerHTML = `<img class="shot" src="${url(item.diffFile)}" alt="Where it changed, in red" />`;
+  } else if (compare === "changes") {
+    canvas.innerHTML = `<p class="empty">Marking what changed…</p>`;
+    void marked(item).then((src) => {
+      if (items[selected] !== item || compare !== "changes") return;
+      canvas.innerHTML = src
+        ? `<img class="shot" src="${src}" alt="Where it changed, in red" />`
+        : `<p class="empty">The two screens are different sizes, so they can't be compared pixel by pixel.</p>`;
+      canvas
+        .querySelectorAll<HTMLImageElement>(".shot")
+        .forEach((img) => (img.complete ? fit(img) : img.addEventListener("load", () => fit(img), { once: true })));
+    });
+    return;
   } else {
     canvas.innerHTML = `<img class="shot" src="${url(item.file)}" alt="${escape(item.title)}" title="Click for actual size" />`;
   }

@@ -221,20 +221,23 @@ const load = (): Saved => {
 };
 let state = load();
 /**
- * The page reloaded while playing (a dev-server reload, an edit to the script): the flow is back at
- * its start, so replay up to the chapter it was on. The flow's own page loads carry on as they are.
+ * The page reloaded while playing (a dev-server reload, an edit to the script). The flow has lost its
+ * place, so the player doesn't race off to catch up by itself: it stops, and offers to go back to the
+ * step it was on. The flow's own page loads carry on as they are.
  */
 const isReload =
   (performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined)?.type === "reload";
-const interruptedAt = state.target === null && state.playing && isReload ? state.chapter : null;
-// Otherwise a load that wasn't headed anywhere and isn't mid-play is a fresh visit: start at the top.
-if (state.target === null && !state.playing) state = { ...fresh, rate: state.rate };
+let resumeAt = state.target === null && state.playing && isReload ? state.chapter : null;
+// A load that wasn't headed anywhere is a fresh visit (or a reload): start at the top, stopped.
+if (state.target === null && (!state.playing || resumeAt !== null)) state = { ...fresh, rate: state.rate };
 let stuck: string | null = null;
 /** How long each chapter takes at 1×, played (not skipped), without the time spent paused. */
 const timings: Record<string, number> = {};
 let issues: Issue[] | null = null;
 let done = false;
 let skipWaits = 0;
+/** What a long wait is fast-forwarding to, said on the bar so the rush reads as meant. */
+let fastFor: string | null = null;
 let running = false;
 let generation = 0;
 let wake: (() => void) | null = null;
@@ -484,12 +487,16 @@ const pageFor = (mine: number): Page => {
     waitFor,
     async skipUntil(target, timeoutMs) {
       skipWaits++;
+      fastFor = typeof target === "string" ? target : null;
       syncClock();
+      render();
       try {
         await waitFor(target, timeoutMs);
       } finally {
         skipWaits--;
+        fastFor = null;
         syncClock();
+        render();
       }
     },
     async wait(ms) {
@@ -700,14 +707,22 @@ function render() {
   player.className = `player ${place.at ? "placed" : (chapter?.placement ?? script.placement ?? "left")}${!place.at || place.at.y > innerHeight / 2 ? "" : " below"}`;
   player.hidden = place.minimized;
   mini.hidden = !place.minimized;
-  $<HTMLElement>(".label").textContent = `${state.chapter + 1} of ${count} · ${chapter?.title ?? ""}`;
+  // The speed, whenever it isn't 1×, so a fast or slow play is never a surprise.
+  $<HTMLElement>(".label").textContent =
+    `${state.chapter + 1} of ${count} · ${chapter?.title ?? ""}${state.rate !== 1 ? ` · ${state.rate}×` : ""}`;
   const skippingTo = state.stopAt ? path()?.label : isSkipping() ? script.chapters[state.target ?? 0]?.title : null;
   const note = skippingTo
     ? `Going to ${skippingTo}…`
     : state.frozen
       ? ["Paused", path()?.label].filter(Boolean).join(" · ")
-      : (stuck ?? path()?.label ?? "");
-  $<HTMLElement>(".note").textContent = note;
+      : fastFor && skipWaits > 0
+        ? `Fast-forwarding to “${fastFor}”…`
+        : (stuck ?? path()?.label ?? "");
+  const noteEl = $<HTMLElement>(".note");
+  if (resumeAt !== null && !state.playing && !isSkipping()) {
+    const to = script.chapters[resumeAt];
+    noteEl.innerHTML = `<button data-do="resume" class="resume">Page reloaded · back to ${resumeAt + 1}. ${escapeHtml(to?.title ?? "")} →</button>`;
+  } else noteEl.textContent = note;
   $<HTMLElement>(".note").classList.toggle("stuck", Boolean(stuck) && !skippingTo && !state.frozen);
   const play = $<HTMLButtonElement>("[data-do=play]");
   const isPlaying = state.playing || isSkipping();
@@ -759,8 +774,17 @@ function render() {
 
 root.addEventListener("click", (event) => {
   const action = (event.target as HTMLElement).closest("[data-do]")?.getAttribute("data-do");
-  if (action === "play") {
-    if (done) void restart({ playing: true });
+  if (action === "resume" && resumeAt !== null) {
+    // Back to where it was before the reload: from the top, fast, then on from there.
+    const to = resumeAt;
+    resumeAt = null;
+    void restart({ target: to, playing: true });
+  } else if (action === "play") {
+    // After a reload the flow has lost its place: Play starts it over rather than guessing.
+    if (resumeAt !== null) {
+      resumeAt = null;
+      void restart({ playing: true });
+    } else if (done) void restart({ playing: true });
     else if (state.playing || isSkipping()) set({ playing: false, target: null, frozen: true });
     else {
       set({ playing: true, frozen: false });
@@ -992,9 +1016,8 @@ const mount = () => {
   syncClock();
   render();
   applyPlace();
-  // Carry on after a page load: replay to where it was, move ahead to where it was going, or keep playing.
-  if (interruptedAt !== null) void restart({ target: interruptedAt, playing: true });
-  else if (state.target !== null || state.playing) void run();
+  // Carry on after a page load: move ahead to where it was going, or keep playing.
+  if (state.target !== null || state.playing) void run();
 };
 if (document.body) mount();
 else document.addEventListener("DOMContentLoaded", mount, { once: true });

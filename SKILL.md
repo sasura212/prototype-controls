@@ -26,6 +26,7 @@ flow they're working on (the branch's recent changes, the route they last touche
 | `comments.ts`                | 💬 mode: pick anything on the page, write what should change. Pins show comments and the agent's replies.                                                                                                                                                                                                                                                                                                                                                                          |
 | `comment.mjs`                | The comments' store (`.prototype/comments.jsonl`) and its command line: `list`, `show`, `reply`, `resolve`, `reopen`, `watch`.                                                                                                                                                                                                                                                                                                                                                     |
 | `studio.html` + `studio.ts`  | `/__prototype/studio`: the flow in a frame sized by dragging its edges, typing a size, or picking a device (scaled down when bigger than the window), ● Record (MP4/WebM), and 📸 a tour that screenshots every step and error, compares each with the last tour, and runs the checks.                                                                                                                                                                                             |
+| `tour.mjs`                   | The screenshot tour: a headless Chrome of its own (Node 22+, any installed Chrome or Edge, or `CHROME_PATH`) walks the flow through the player and takes a real screenshot of every step and error at 2× density. The studio's 📸 starts it; run it yourself with `node .prototype/tour.mjs <dev server URL> [--width 1440 --height 900 --scale 2]`.                                                                                                                               |
 | `sheet.html` + `sheet.ts`    | `/__prototype/sheet`: the flow review. Each screen from the last tour, large, with before/after (side by side, slider, changes marked), the checks, its comments and timing; filters, review ticks, and a grid.                                                                                                                                                                                                                                                                    |
 | `vite.config.mjs`            | The project's own Vite config, plus the player first in `<head>` (so its clock is in place before the app runs) and the small API that saves into `.prototype/`.                                                                                                                                                                                                                                                                                                                   |
 | `check-wait.js`              | Evaluated in the page by a browser tool: waits until the player stops and says where.                                                                                                                                                                                                                                                                                                                                                                                              |
@@ -102,9 +103,11 @@ page ends the evaluation it ran in: start it in one call, wait in the next.
 - **Every error:** `showPath(id)` for each path, then wait until `paused`. Check `onScreen` is true
   and take a screenshot: the message should be readable. Then `play()` and check it gets past it.
 - **Previous and pause:** `goTo` back one step lands there paused; `pause()` freezes the page.
+- **A tour:** `node .prototype/tour.mjs <URL>` screenshots every step and error; open `/__prototype/sheet`
+  and look at each screen. A tour that stops or comes out wrong points at the step or path to fix.
 
-Editing `script.ts` reloads the page; the player replays to where it was. Keep going until the
-whole flow and every reachable error pass.
+Editing `script.ts` reloads the page; the player stops and offers to go back to where it was. Keep
+going until the whole flow and every reachable error pass.
 
 ## 5. Watch for comments, and act on them
 
@@ -141,7 +144,7 @@ that `git status` doesn't show any of it.
   paused hands it back to the user. Previous can't wind the page back, so it replays from the start
   to the step before, fast. Next finishes the step on screen fast. Picking an error plays fast to
   its message, lets it settle, and pauses there; Play carries on from it. Arriving at a step paused
-  lets the screen settle before freezing. A reload while playing replays back to the same step.
+  lets the screen settle before freezing. A reload while playing (an edit to the script, a dev-server reload) doesn't race off: the player stops at the top and offers "back to <step>" in one click. The speed shows on the bar whenever it isn't 1×, and a `skipUntil` wait says "Fast-forwarding to …".
 - **A stuck step offers look-alikes.** When a label isn't found, the panel lists what's on screen
   that looks like it; picking one saves it to `.prototype/aliases.json`. When you see that file,
   fold the aliases into the script and delete them.
@@ -150,5 +153,5 @@ that `git status` doesn't show any of it.
 - A chapter shouldn't span a full page load the flow makes itself: put the navigating click last.
 - Only `Date.now`, timers, animation frames and CSS animations are on the player's clock, not
   `new Date()` or `performance.now`.
-- The studio captures the tab with the browser's screen-share prompt, once per session.
+- Recording captures the tab with the browser's screen-share prompt, once per session. Screenshots don't: `tour.mjs` takes them in its own headless Chrome, sharp at 2×, so a tour needs no one at the browser.
 - To remove it: delete `.prototype/` and its line in `.git/info/exclude`.
