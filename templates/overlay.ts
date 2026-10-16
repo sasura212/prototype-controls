@@ -8,6 +8,7 @@ import script from "./script";
 import css from "./overlay.css?inline";
 import { audit, type Issue, type WordingRule } from "./checks";
 import { setUpComments } from "./comments";
+import { icon } from "./icons";
 
 export type Target = string | { css: string };
 export type Page = {
@@ -608,40 +609,63 @@ const root = host.attachShadow({ mode: "open" });
 root.innerHTML = `<style>${css}</style>
 <div class="ring"></div>
 <section class="player" aria-label="Prototype player">
+  <button class="grip" data-drag aria-label="Move the player. Double-click to put it back.">${icon.grip}</button>
   <span class="buttons">
-    <button data-do="prev" aria-label="Previous step">⏮</button>
-    <button data-do="play" class="play" aria-label="Play">▶</button>
-    <button data-do="next" aria-label="Next step">⏭</button>
+    <button data-do="prev" aria-label="Previous step">${icon.prev}</button>
+    <button data-do="play" class="play" aria-label="Play">${icon.play}</button>
+    <button data-do="next" aria-label="Next step">${icon.next}</button>
   </span>
   <span class="now">
     <span class="label" aria-live="polite"></span>
     <span class="note"></span>
     <span class="bar"></span>
   </span>
-  <button data-do="replay" aria-label="Replay from the start">↺</button>
-  <button data-do="comment" aria-label="Comment on something on the page">💬<span class="count"></span></button>
-  <button data-do="controls" aria-label="Prototype controls" aria-expanded="false">⚗</button>
+  <span class="tools">
+    <button data-do="replay" aria-label="Replay from the start">${icon.replay}</button>
+    <button data-do="comment" aria-label="Comment on something on the page">${icon.comment}<span class="count"></span></button>
+    <button data-do="controls" aria-label="Prototype controls" aria-expanded="false">${icon.settings}</button>
+    <button data-do="minimize" aria-label="Minimize the player">${icon.minimize}</button>
+  </span>
   <div class="controls" hidden>
     <div class="suggest" hidden></div>
-    <label>Jump to <select data-do="jump"></select></label>
-    <label>Errors and edge cases <select data-do="path"></select></label>
-    <label class="scenarios">What if <select data-do="scenario"></select></label>
-    <label>Speed <select data-do="rate">
-      <option value="0.5">0.5×</option><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option>
-    </select></label>
-    <span class="row">
-      <button data-do="check" class="text">Check this screen</button>
-      <a href="/__prototype/studio" target="_blank" class="text">Studio ↗</a>
-    </span>
-    <ul class="issues" hidden></ul>
-    <details class="timing"><summary>Timing at 1×</summary><ul></ul></details>
+    <div class="tabs" role="tablist">
+      <button role="tab" data-tab="play" aria-selected="true">Play</button>
+      <button role="tab" data-tab="comments" aria-selected="false">Comments <span class="tabCount"></span></button>
+      <button role="tab" data-tab="review" aria-selected="false">Review</button>
+    </div>
+    <div class="tab" data-panel="play">
+      <label>Jump to <select data-do="jump"></select></label>
+      <label>Errors and edge cases <select data-do="path"></select></label>
+      <label class="scenarios">What if <select data-do="scenario"></select></label>
+      <div class="field">Speed
+        <span class="segments" role="radiogroup" aria-label="Speed">
+          <button data-rate="0.5" role="radio">0.5×</button><button data-rate="1" role="radio">1×</button><button data-rate="2" role="radio">2×</button><button data-rate="4" role="radio">4×</button>
+        </span>
+      </div>
+    </div>
+    <div class="tab" data-panel="comments" hidden>
+      <span class="segments filter" role="radiogroup" aria-label="Show">
+        <button data-filter="open" role="radio">Open</button><button data-filter="resolved" role="radio">Resolved</button><button data-filter="all" role="radio">All</button>
+      </span>
+      <ul class="commentList"></ul>
+      <button data-do="comment" class="wide">${icon.comment} New comment</button>
+    </div>
+    <div class="tab" data-panel="review" hidden>
+      <button data-do="check" class="wide">Check this screen</button>
+      <ul class="issues" hidden></ul>
+      <details class="timing"><summary>Timing at 1×</summary><ul></ul></details>
+      <a href="/__prototype/studio" target="_blank" class="wide">${icon.studio} Open the studio ↗</a>
+    </div>
   </div>
-</section>`;
+</section>
+<button class="mini" hidden aria-label="Show the player">
+  <svg class="miniRing" viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="21"/><circle class="miniDone" cx="24" cy="24" r="21"/></svg>
+  <span class="miniIcon"></span>
+</button>`;
 const $ = <T extends Element>(selector: string) => root.querySelector<T>(selector)!;
 const ring = $<HTMLDivElement>(".ring");
 const jumpSelect = $<HTMLSelectElement>("[data-do=jump]");
 const pathSelect = $<HTMLSelectElement>("[data-do=path]");
-const rateSelect = $<HTMLSelectElement>("[data-do=rate]");
 const scenarioSelect = $<HTMLSelectElement>("[data-do=scenario]");
 jumpSelect.innerHTML = script.chapters.map((c, i) => `<option value="${i}">${i + 1} · ${c.title}</option>`).join("");
 pathSelect.innerHTML = [
@@ -672,7 +696,10 @@ function ringAt(el: Element) {
 function render() {
   const count = script.chapters.length;
   const chapter = script.chapters[state.chapter];
-  $<HTMLElement>(".player").className = `player ${chapter?.placement ?? script.placement ?? "left"}`;
+  const player = $<HTMLElement>(".player");
+  player.className = `player ${place.at ? "placed" : (chapter?.placement ?? script.placement ?? "left")}${!place.at || place.at.y > innerHeight / 2 ? "" : " below"}`;
+  player.hidden = place.minimized;
+  mini.hidden = !place.minimized;
   $<HTMLElement>(".label").textContent = `${state.chapter + 1} of ${count} · ${chapter?.title ?? ""}`;
   const skippingTo = state.stopAt ? path()?.label : isSkipping() ? script.chapters[state.target ?? 0]?.title : null;
   const note = skippingTo
@@ -684,8 +711,13 @@ function render() {
   $<HTMLElement>(".note").classList.toggle("stuck", Boolean(stuck) && !skippingTo && !state.frozen);
   const play = $<HTMLButtonElement>("[data-do=play]");
   const isPlaying = state.playing || isSkipping();
-  play.textContent = isPlaying ? "❚❚" : "▶";
+  play.innerHTML = isPlaying ? icon.pause : icon.play;
   play.setAttribute("aria-label", isPlaying ? "Pause" : done ? "Play again" : "Play");
+  // Minimized: a ring round the button fills as the flow goes.
+  $<HTMLElement>(".miniIcon").innerHTML = isPlaying ? icon.pause : icon.play;
+  const share = count > 1 ? state.chapter / (count - 1) : 1;
+  $<SVGCircleElement>(".miniDone").style.strokeDashoffset = String(132 * (1 - share));
+  mini.setAttribute("aria-label", `Show the player: ${state.chapter + 1} of ${count}, ${chapter?.title ?? ""}`);
   $<HTMLButtonElement>("[data-do=prev]").disabled = state.chapter <= 0;
   $<HTMLButtonElement>("[data-do=next]").disabled = state.chapter >= count - 1;
   [...$<HTMLElement>(".bar").children].forEach((el, i) => {
@@ -693,7 +725,13 @@ function render() {
   });
   jumpSelect.value = String(state.chapter);
   pathSelect.value = state.path ?? "";
-  rateSelect.value = String(state.rate);
+  root
+    .querySelectorAll<HTMLElement>("[data-rate]")
+    .forEach((b) => b.setAttribute("aria-checked", String(Number(b.dataset.rate) === state.rate)));
+  root
+    .querySelectorAll<HTMLElement>("[data-filter]")
+    .forEach((b) => b.setAttribute("aria-checked", String(b.dataset.filter === commentFilter)));
+  drawCommentList();
 
   // Stuck: what's on screen that looks like what it wants, one click to use it.
   const suggest = $<HTMLElement>(".suggest");
@@ -702,7 +740,7 @@ function render() {
     suggest.innerHTML = `<p>Can't find “${suggestions.target}”. Use one of these instead?</p>${suggestions.options
       .map((option) => `<button data-alias="${option.replace(/"/g, "&quot;")}">${option}</button>`)
       .join("")}`;
-    $<HTMLElement>(".controls").hidden = false;
+    openPanel("play");
   }
   const list = $<HTMLElement>(".issues");
   list.hidden = issues === null;
@@ -732,17 +770,142 @@ root.addEventListener("click", (event) => {
   else if (action === "next") goTo(state.chapter + 1);
   else if (action === "replay") void restart({ playing: true });
   else if (action === "comment") comments?.startPicking();
+  else if (action === "minimize") setPlace({ minimized: true });
   else if (action === "check") {
     issues = audit(script.wording);
     render();
   } else if (action === "controls") {
-    const panel = $<HTMLElement>(".controls");
-    panel.hidden = !panel.hidden;
-    $<HTMLButtonElement>("[data-do=controls]").setAttribute("aria-expanded", String(!panel.hidden));
+    if ($<HTMLElement>(".controls").hidden) openPanel();
+    else closePanel();
   }
 });
 jumpSelect.addEventListener("change", () => goTo(Number(jumpSelect.value)));
-rateSelect.addEventListener("change", () => set({ rate: Number(rateSelect.value) }));
+// The panel: tabs, speed, the comments list and its filter.
+let commentFilter: "open" | "resolved" | "all" = "open";
+function openPanel(tab?: string) {
+  $<HTMLElement>(".controls").hidden = false;
+  $<HTMLButtonElement>("[data-do=controls]").setAttribute("aria-expanded", "true");
+  if (tab) showTab(tab);
+}
+function closePanel() {
+  $<HTMLElement>(".controls").hidden = true;
+  $<HTMLButtonElement>("[data-do=controls]").setAttribute("aria-expanded", "false");
+}
+function showTab(tab: string) {
+  root
+    .querySelectorAll<HTMLElement>("[data-tab]")
+    .forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === tab)));
+  root.querySelectorAll<HTMLElement>("[data-panel]").forEach((p) => (p.hidden = p.dataset.panel !== tab));
+}
+function drawCommentList() {
+  if (!comments) return;
+  const all = comments.all();
+  const shown = all
+    .map((comment, index) => ({ comment, number: index + 1 }))
+    .filter(({ comment }) => commentFilter === "all" || comment.status === commentFilter);
+  $<HTMLElement>(".tabCount").textContent = String(all.filter((c) => c.status === "open").length || "");
+  $<HTMLElement>(".commentList").innerHTML = shown.length
+    ? shown
+        .map(
+          ({ comment, number }) => `<li><button data-comment="${comment.id}">
+            <span class="pinDot ${comment.status}${comment.replies.length ? " answered" : ""}">${number}</span>
+            <span class="commentText"><span>${escapeHtml(comment.text)}</span>
+            <small>${escapeHtml(comment.step ?? "")}${comment.replies.length ? ` · ${comment.replies.length} ${comment.replies.length === 1 ? "reply" : "replies"}` : ""}</small></span>
+          </button></li>`
+        )
+        .join("")
+    : `<li class="empty">${commentFilter === "open" ? "No open comments." : "Nothing here yet."}</li>`;
+}
+const escapeHtml = (text: string) =>
+  text.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] ?? c);
+root.addEventListener("click", (event) => {
+  const el = (event.target as HTMLElement).closest<HTMLElement>(
+    "[data-tab], [data-rate], [data-filter], [data-comment]"
+  );
+  if (!el) return;
+  if (el.dataset.tab) showTab(el.dataset.tab);
+  if (el.dataset.rate) set({ rate: Number(el.dataset.rate) });
+  if (el.dataset.filter) {
+    commentFilter = el.dataset.filter as typeof commentFilter;
+    render();
+  }
+  if (el.dataset.comment) {
+    // On this step: open its pin. On another: go there, and the pin is waiting.
+    const comment = comments.all().find((c) => c.id === el.dataset.comment);
+    const index = script.chapters.findIndex((c) => c.title === comment?.step);
+    if (comment && (index === state.chapter || index < 0)) comments.open(comment.id);
+    else if (index >= 0) goTo(index);
+  }
+});
+
+// ------------------------------------------------------------------------------------------------
+// Where the player sits: dragged anywhere by its grip (remembered), or minimized to a button.
+// ------------------------------------------------------------------------------------------------
+const mini = $<HTMLButtonElement>(".mini");
+type Place = { at: { x: number; y: number } | null; minimized: boolean };
+const PLACE_KEY = "prototype-overlay-place";
+let place: Place = { at: null, minimized: false };
+try {
+  place = { ...place, ...JSON.parse(localStorage.getItem(PLACE_KEY) ?? "{}") };
+} catch {
+  // Storage blocked: the player starts in its usual spot.
+}
+function setPlace(next: Partial<Place>) {
+  place = { ...place, ...next };
+  try {
+    localStorage.setItem(PLACE_KEY, JSON.stringify(place));
+  } catch {
+    // Storage blocked: the position lasts until the page reloads.
+  }
+  applyPlace();
+  render();
+}
+/** Keeps the dragged player on screen, and opens the panel on whichever side has room. */
+function applyPlace() {
+  const player = $<HTMLElement>(".player");
+  for (const el of [player, mini]) {
+    if (!place.at) {
+      el.style.left = el.style.top = el.style.right = el.style.bottom = "";
+      continue;
+    }
+    const rect = (place.minimized ? mini : player).getBoundingClientRect();
+    const x = Math.min(Math.max(place.at.x, 8), innerWidth - Math.max(rect.width, 48) - 8);
+    const y = Math.min(Math.max(place.at.y, 8), innerHeight - Math.max(rect.height, 48) - 8);
+    Object.assign(el.style, { left: `${x}px`, top: `${y}px`, right: "auto", bottom: "auto" });
+  }
+}
+function startDrag(event: PointerEvent, el: HTMLElement) {
+  const rect = el.getBoundingClientRect();
+  const offset = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+  const startedAt = { x: event.clientX, y: event.clientY };
+  let moved = false;
+  try {
+    el.setPointerCapture(event.pointerId);
+  } catch {
+    // A synthetic pointer (a test, an automation) can't be captured; the drag still follows it.
+  }
+  const move = (e: PointerEvent) => {
+    if (!moved && Math.hypot(e.clientX - startedAt.x, e.clientY - startedAt.y) < 4) return;
+    moved = true;
+    place = { ...place, at: { x: e.clientX - offset.x, y: e.clientY - offset.y } };
+    applyPlace();
+  };
+  const end = () => {
+    el.removeEventListener("pointermove", move);
+    el.removeEventListener("pointerup", end);
+    el.removeEventListener("pointercancel", end);
+    if (moved) setPlace({});
+    // A tap on the minimized button (no drag) opens the player again.
+    else if (el === mini) setPlace({ minimized: false });
+  };
+  el.addEventListener("pointermove", move);
+  el.addEventListener("pointerup", end);
+  el.addEventListener("pointercancel", end);
+}
+$<HTMLElement>(".grip").addEventListener("pointerdown", (event) => startDrag(event, $<HTMLElement>(".player")));
+$<HTMLElement>(".grip").addEventListener("dblclick", () => setPlace({ at: null }));
+mini.addEventListener("pointerdown", (event) => startDrag(event, mini));
+addEventListener("resize", applyPlace);
 scenarioSelect.addEventListener("change", async () => {
   await script.scenarios?.find((item) => item.id === scenarioSelect.value)?.set();
   location.reload();
@@ -787,6 +950,7 @@ const comments = setUpComments(
 );
 comments.onChange((open) => {
   $<HTMLElement>(".count").textContent = open ? String(open) : "";
+  drawCommentList();
 });
 
 Object.assign(window, {
@@ -827,6 +991,7 @@ const mount = () => {
   document.body.append(host);
   syncClock();
   render();
+  applyPlace();
   // Carry on after a page load: replay to where it was, move ahead to where it was going, or keep playing.
   if (interruptedAt !== null) void restart({ target: interruptedAt, playing: true });
   else if (state.target !== null || state.playing) void run();

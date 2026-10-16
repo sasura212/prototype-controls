@@ -1,28 +1,83 @@
-/* The prototype player: a video's control bar, dark and floating, out of the flow's way. */
+/* The prototype player: a dark floating bar, out of the flow's way. Its own shadow DOM, so the page's
+   styles can't reach in and these can't leak out. Swap the variables for a project's tokens. */
 :host {
   --ink: #fff;
-  --ground: #101828;
-  --hover: #1d2939;
-  --accent: #84adff;
+  --ink-2: #c3c7cf;
+  --ink-3: #8b909a;
+  --ground: #16181d;
+  --raised: #22252b;
+  --hover: #2d3038;
+  --line: rgb(255 255 255 / 0.08);
+  --accent: #7aa2ff;
   --warn: #fdb022;
+  /* Comment cards are light: they sit on the product, like a design tool's comments. */
+  --card: #fff;
+  --card-ink: #101828;
+  --card-ink-2: #475467;
+  --card-line: #eaecf0;
+  --card-field: #f2f4f7;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.2), 0 12px 32px rgb(0 0 0 / 0.28);
   all: initial;
 }
 
+* {
+  box-sizing: border-box;
+}
+
+button,
+select,
+a {
+  font: inherit;
+}
+
+button {
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+button:focus-visible,
+select:focus-visible,
+a:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------- the bar */
 .player {
   position: fixed;
   z-index: 2147483000;
   bottom: 16px;
   display: flex;
-  gap: 12px;
+  gap: 4px;
   align-items: center;
-  padding: 6px 8px;
-  border-radius: 999px;
+  padding: 6px 6px 6px 2px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
   background: var(--ground);
   color: var(--ink);
-  box-shadow: 0 12px 32px rgb(0 0 0 / 0.24);
+  box-shadow: var(--shadow);
   font:
     12px/1.4 system-ui,
+    -apple-system,
+    "Segoe UI",
     sans-serif;
+  -webkit-font-smoothing: antialiased;
+  /* On a narrow screen the step name gives way, never the buttons. */
+  max-width: calc(100vw - 16px);
+}
+
+.player[hidden] {
+  display: none;
 }
 
 .left {
@@ -38,53 +93,66 @@
   transform: translateX(-50%);
 }
 
-.buttons {
+.grip {
+  width: 18px;
+  height: 32px;
+  border-radius: 6px;
+  color: var(--ink-3);
+  cursor: grab;
+  touch-action: none;
+}
+
+.grip:hover {
+  color: var(--ink-2);
+}
+
+.grip:active {
+  cursor: grabbing;
+}
+
+.buttons,
+.tools {
   display: flex;
   gap: 2px;
   align-items: center;
 }
 
-button {
-  display: grid;
-  place-items: center;
+.buttons button,
+.tools button {
+  position: relative;
   width: 32px;
   height: 32px;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--ink);
-  font:
-    13px system-ui,
-    sans-serif;
-  cursor: pointer;
+  border-radius: 8px;
+  color: var(--ink-2);
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
 }
 
-button:hover:not(:disabled) {
+.buttons button:hover:not(:disabled),
+.tools button:hover:not(:disabled),
+.tools button[aria-expanded="true"] {
   background: var(--hover);
+  color: var(--ink);
 }
 
-button:disabled {
-  opacity: 0.35;
-  cursor: default;
-}
-
-button:focus-visible,
-select:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.play,
-.play:hover:not(:disabled) {
+.buttons .play,
+.buttons .play:hover:not(:disabled) {
+  width: 36px;
+  height: 36px;
+  margin: 0 2px;
+  border-radius: 999px;
   background: var(--ink);
   color: var(--ground);
 }
 
 .now {
   display: flex;
+  flex: 0 1 14rem;
   flex-direction: column;
-  gap: 4px;
-  width: 14rem;
+  gap: 3px;
+  min-width: 3rem;
+  padding: 0 8px;
 }
 
 .label,
@@ -94,8 +162,13 @@ select:focus-visible {
   text-overflow: ellipsis;
 }
 
+.label {
+  font-weight: 500;
+}
+
 .note {
   color: var(--accent);
+  font-size: 11px;
 }
 
 .note:empty {
@@ -113,149 +186,32 @@ select:focus-visible {
 
 .bar span {
   flex: 1;
-  height: 4px;
+  height: 3px;
   border-radius: 999px;
   background: var(--hover);
   transition: background-color 160ms ease;
 }
 
 .bar .done {
-  background: var(--ink);
+  background: var(--ink-2);
 }
 
 .bar .current {
   background: var(--accent);
 }
 
-/* Jump to a chapter, or play an error path: above the bar. */
-.controls {
-  position: absolute;
-  right: 0;
-  bottom: calc(100% + 8px);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  width: 16rem;
-  padding: 12px;
-  border-radius: 12px;
-  background: var(--ground);
-  box-shadow: 0 12px 32px rgb(0 0 0 / 0.24);
-}
-
-.controls[hidden] {
-  display: none;
-}
-
-.controls label {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  color: #d0d5dd;
-}
-
-select {
-  padding: 6px 8px;
-  border: 1px solid var(--hover);
-  border-radius: 8px;
-  background: var(--hover);
-  color: var(--ink);
-  font: inherit;
-}
-
-/* Where a click lands. */
-.ring {
-  position: fixed;
-  z-index: 2147482999;
-  display: none;
-  border: 2px solid var(--accent);
-  border-radius: 10px;
-  box-shadow: 0 0 0 4px rgb(132 173 255 / 0.25);
-  pointer-events: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .bar span {
-    transition: none;
-  }
-}
-
-/* The panel's extra rows. */
-.controls {
-  max-height: 70vh;
-  overflow: auto;
-}
-
-.row {
-  display: flex;
-  gap: 8px;
-  justify-content: space-between;
-}
-
-.text {
-  width: auto;
-  height: auto;
-  padding: 4px 0;
-  border-radius: 4px;
-  color: var(--accent);
-  font: inherit;
-  text-decoration: none;
-}
-
-.suggest p {
-  margin: 0 0 6px;
-  color: var(--warn);
-}
-
-.suggest button,
-.thread button {
-  width: auto;
-  height: auto;
-  margin: 0 6px 6px 0;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: var(--hover);
-  font: inherit;
-}
-
-.issues,
-.timing ul {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  color: #d0d5dd;
-}
-
-.issues li {
-  cursor: pointer;
-}
-
-.issues li:hover {
-  color: var(--ink);
-}
-
-.timing summary {
-  color: #d0d5dd;
-  cursor: pointer;
-}
-
-.timing li {
-  display: flex;
-  justify-content: space-between;
-  font-variant-numeric: tabular-nums;
-}
-
-/* Open comments, counted on the 💬 button. */
+/* Open comments, counted on the comment button. */
 .count {
   position: absolute;
-  margin: -14px 0 0 18px;
-  padding: 0 4px;
+  top: 2px;
+  right: 2px;
+  min-width: 14px;
+  padding: 0 3px;
   border-radius: 999px;
   background: var(--accent);
   color: var(--ground);
-  font-size: 10px;
+  font-size: 9px;
+  font-weight: 700;
   line-height: 14px;
 }
 
@@ -263,29 +219,340 @@ select {
   display: none;
 }
 
-/* Comments on the page: the element being picked, numbered pins, and a pin's thread. */
+/* ---------------------------------------------------------------- minimized */
+.mini {
+  position: fixed;
+  z-index: 2147483000;
+  bottom: 16px;
+  left: 16px;
+  width: 48px;
+  height: 48px;
+  border-radius: 999px;
+  background: var(--ground);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+  touch-action: none;
+}
+
+.mini[hidden] {
+  display: none;
+}
+
+.miniRing {
+  position: absolute;
+  inset: 0;
+  width: 48px;
+  height: 48px;
+  transform: rotate(-90deg);
+}
+
+.miniRing circle {
+  fill: none;
+  stroke: var(--hover);
+  stroke-width: 3;
+}
+
+.miniRing .miniDone {
+  stroke: var(--accent);
+  stroke-dasharray: 132;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 200ms ease;
+}
+
+.miniIcon {
+  display: grid;
+  place-items: center;
+}
+
+/* ---------------------------------------------------------------- the panel */
+.controls {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(19rem, calc(100vw - 16px));
+  max-height: min(70vh, 34rem);
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--ground);
+  box-shadow: var(--shadow);
+}
+
+.below .controls {
+  top: calc(100% + 8px);
+  bottom: auto;
+}
+
+.controls[hidden],
+.tab[hidden],
+.issues[hidden],
+.suggest[hidden],
+.scenarios[hidden] {
+  display: none;
+}
+
+.tabs,
+.segments {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 9px;
+  background: var(--raised);
+}
+
+.tabs button,
+.segments button {
+  flex: 1;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 7px;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.tabs [aria-selected="true"],
+.segments [aria-checked="true"] {
+  background: var(--hover);
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.3);
+}
+
+.tabCount:not(:empty) {
+  margin-left: 4px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--ground);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.tab {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tab label,
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--ink-3);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+select {
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--raised);
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.wide {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 9px;
+  background: var(--raised);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.wide:hover {
+  background: var(--hover);
+}
+
+.suggest {
+  padding: 10px;
+  border-radius: 10px;
+  background: rgb(253 176 34 / 0.12);
+}
+
+.suggest p {
+  margin: 0 0 8px;
+  color: var(--warn);
+}
+
+.suggest button {
+  margin: 0 6px 6px 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--hover);
+}
+
+.commentList,
+.issues,
+.timing ul {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--ink-2);
+}
+
+.commentList button {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  width: 100%;
+  padding: 8px;
+  border-radius: 8px;
+  text-align: left;
+}
+
+.commentList button:hover {
+  background: var(--raised);
+}
+
+.commentText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  color: var(--ink);
+}
+
+.commentText small {
+  color: var(--ink-3);
+  font-size: 11px;
+}
+
+.empty {
+  padding: 12px 8px;
+  color: var(--ink-3);
+}
+
+.pinDot {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px 999px 999px 2px;
+  background: var(--accent);
+  color: var(--ground);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.pinDot.answered {
+  background: var(--warn);
+}
+
+.pinDot.resolved {
+  background: var(--ink-3);
+}
+
+.issues li {
+  padding: 6px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.issues li:hover {
+  background: var(--raised);
+  color: var(--ink);
+}
+
+.timing summary {
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.timing ul {
+  margin-top: 8px;
+}
+
+.timing li {
+  display: flex;
+  justify-content: space-between;
+  padding: 2px 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------- on the page */
+/* Where a click lands. */
+.ring {
+  position: fixed;
+  z-index: 2147482999;
+  display: none;
+  border: 2px solid var(--accent);
+  border-radius: 10px;
+  box-shadow: 0 0 0 4px rgb(122 162 255 / 0.25);
+  pointer-events: none;
+}
+
+/* Picking something to comment on. */
 .pick {
   position: fixed;
   z-index: 2147482998;
   display: none;
-  border: 2px dashed var(--accent);
-  border-radius: 4px;
-  background: rgb(132 173 255 / 0.08);
+  border: 2px solid var(--accent);
+  border-radius: 6px;
+  background: rgb(122 162 255 / 0.08);
+  pointer-events: none;
+  transition: all 80ms ease;
+}
+
+.pickHint {
+  position: fixed;
+  z-index: 2147483001;
+  top: 16px;
+  left: 50%;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--ground);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+  font:
+    500 12px system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+  transform: translateX(-50%);
   pointer-events: none;
 }
 
+.pickHint[hidden] {
+  display: none;
+}
+
+/* Pins: numbered teardrops pointing at what they're about. */
 .pin {
   position: fixed;
   z-index: 2147482998;
-  width: 22px;
-  height: 22px;
-  border: 2px solid var(--ink);
+  width: 26px;
+  height: 26px;
+  border: 2px solid #fff;
+  border-radius: 999px 999px 999px 3px;
   background: var(--accent);
   color: var(--ground);
   font:
-    600 11px system-ui,
+    700 11px system-ui,
+    -apple-system,
+    "Segoe UI",
     sans-serif;
-  box-shadow: 0 2px 8px rgb(0 0 0 / 0.3);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.25);
+  transition: transform 120ms ease;
+}
+
+.pin:hover,
+.pin.active {
+  transform: scale(1.12);
 }
 
 .pin.answered {
@@ -294,52 +561,205 @@ select {
 
 .pin.resolved {
   background: #98a2b3;
-  opacity: 0.7;
 }
 
+/* Hovering a pin shows what it says, before it's opened. */
+.peek {
+  position: absolute;
+  top: 50%;
+  left: calc(100% + 8px);
+  display: none;
+  width: max-content;
+  max-width: 240px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--card-ink);
+  box-shadow: var(--shadow);
+  font:
+    12px/1.4 system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+  text-align: left;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.peek em {
+  display: block;
+  margin-top: 4px;
+  color: var(--card-ink-2);
+  font-style: normal;
+  font-size: 11px;
+}
+
+.pin:hover:not(.active) .peek {
+  display: block;
+}
+
+/* A comment's card: the thread, and a reply. */
 .thread {
   position: fixed;
   z-index: 2147483001;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  width: 320px;
-  padding: 12px;
-  border-radius: 12px;
-  background: var(--ground);
-  color: var(--ink);
-  box-shadow: 0 12px 32px rgb(0 0 0 / 0.3);
+  width: 328px;
+  max-height: min(60vh, 28rem);
+  border: 1px solid var(--card-line);
+  border-radius: 14px;
+  background: var(--card);
+  color: var(--card-ink);
+  box-shadow: var(--shadow);
   font:
     13px/1.45 system-ui,
+    -apple-system,
+    "Segoe UI",
     sans-serif;
 }
 
-.thread p {
-  margin: 0;
+.thread header {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 10px 10px 14px;
+  border-bottom: 1px solid var(--card-line);
 }
 
-.thread .about,
-.thread .resolved {
-  color: #d0d5dd;
+.thread .spacer {
+  flex: 1;
+}
+
+.thread .tag {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #ecfdf3;
+  color: #067647;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.thread .icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  color: var(--card-ink-2);
+}
+
+.thread .icon:hover {
+  background: var(--card-field);
+  color: var(--card-ink);
+}
+
+.messages {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: auto;
+  padding: 12px 14px;
+}
+
+.message {
+  display: flex;
+  gap: 10px;
+}
+
+.avatar {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: #dbe5ff;
+  color: #2952cc;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.avatar.agent {
+  background: #fdead7;
+  color: #c4320a;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.meta {
+  color: var(--card-ink-2);
+  font-size: 11px;
+}
+
+.meta b {
+  color: var(--card-ink);
   font-size: 12px;
 }
 
-.thread .reply {
-  padding-left: 8px;
-  border-left: 2px solid var(--accent);
+.thread .note,
+.thread .about,
+.thread .hint {
+  margin: 0;
+  color: var(--card-ink-2);
+  font-size: 12px;
 }
 
-.thread textarea {
-  padding: 8px;
-  border: 1px solid var(--hover);
-  border-radius: 8px;
-  background: var(--hover);
-  color: var(--ink);
+.thread .about {
+  padding: 10px 14px 0;
+}
+
+.thread .hint {
+  padding: 0 14px 10px;
+  font-size: 11px;
+}
+
+.compose {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  margin: 10px;
+  padding: 6px 6px 6px 10px;
+  border: 1px solid var(--card-line);
+  border-radius: 10px;
+  background: var(--card-field);
+}
+
+.compose:focus-within {
+  border-color: var(--accent);
+  background: var(--card);
+}
+
+.compose textarea {
+  flex: 1;
+  min-height: 22px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--card-ink);
   font: inherit;
-  resize: vertical;
+  resize: none;
 }
 
-.thread .send {
-  background: var(--ink);
-  color: var(--ground);
+.compose .send {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: var(--card-ink);
+  color: var(--card);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bar span,
+  .pin,
+  .pick,
+  .miniRing .miniDone,
+  .buttons button,
+  .tools button {
+    transition: none;
+  }
 }

@@ -1,11 +1,13 @@
 // Comments on the flow, left in the player: pick anything on the page, say what's wrong with it, and
 // it goes to `.prototype/comments.jsonl` for Claude Code (or any agent) to act on. Pins mark them on
-// the page; an agent's replies and resolutions (comment.mjs) show up on the pin.
+// the page; an agent's replies and resolutions (comment.mjs) show up on the pin, and you can answer.
 import { selectorFor } from "./checks";
+import { icon } from "./icons";
 
 export type Comment = {
   id: string;
   text: string;
+  by?: string;
   step?: string;
   path?: string | null;
   url: string;
@@ -21,6 +23,16 @@ type Timers = { setTimeout: (fn: () => void, ms: number) => number };
 
 const escape = (text: string) =>
   text.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] ?? c);
+/** "now", "4m", "2h", or the date: how long ago, the way comment threads say it. */
+const ago = (at: string) => {
+  const minutes = Math.round((Date.now() - new Date(at).getTime()) / 60_000);
+  if (minutes < 1) return "now";
+  if (minutes < 60) return `${minutes}m`;
+  if (minutes < 60 * 24) return `${Math.round(minutes / 60)}h`;
+  return new Date(at).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+};
+const who = (by?: string) => (!by || by === "you" ? "You" : by);
+const initial = (by?: string) => who(by).slice(0, 1).toUpperCase();
 
 export const setUpComments = (root: ShadowRoot, host: HTMLElement, where: Where, real: Timers) => {
   const layer = document.createElement("div");
@@ -29,9 +41,15 @@ export const setUpComments = (root: ShadowRoot, host: HTMLElement, where: Where,
   const outline = document.createElement("div");
   outline.className = "pick";
   root.append(outline);
+  const hint = document.createElement("div");
+  hint.className = "pickHint";
+  hint.textContent = "Click anything to comment on it · Esc to cancel";
+  hint.hidden = true;
+  root.append(hint);
   let comments: Comment[] = [];
   let picking = false;
-  let onChange: (open: number) => void = () => {};
+  let openId: string | null = null;
+  const listeners: ((open: number) => void)[] = [];
 
   const load = async () => {
     try {
@@ -40,7 +58,10 @@ export const setUpComments = (root: ShadowRoot, host: HTMLElement, where: Where,
       // No player server (the page opened on its own): no comments to show.
     }
     drawPins();
-    onChange(comments.filter((c) => c.status === "open").length);
+    const open = comments.filter((c) => c.status === "open").length;
+    listeners.forEach((listener) => listener(open));
+    // A thread that's open on screen picks up a new reply.
+    if (openId) refreshThread();
   };
   const elementFor = (comment: Comment) => {
     if (!comment.target) return null;
@@ -57,55 +78,122 @@ export const setUpComments = (root: ShadowRoot, host: HTMLElement, where: Where,
         ) ?? null)
       : null;
   };
-
-  // Pins: the comments on this page and step, numbered, at the element they're about.
-  function drawPins() {
+  const isHere = (comment: Comment) => {
     const here = where();
+    return comment.url === location.pathname && (!comment.step || comment.step === here.step);
+  };
+
+  // Pins: the comments on this page and step, numbered teardrops at the element they're about.
+  function drawPins() {
     layer.innerHTML = "";
     comments.forEach((comment, index) => {
-      if (comment.url !== location.pathname || (comment.step && comment.step !== here.step)) return;
-      const el = elementFor(comment);
-      const rect = el?.getBoundingClientRect();
+      if (!isHere(comment)) return;
+      const rect = elementFor(comment)?.getBoundingClientRect();
       if (!rect || !rect.width) return;
       const pin = document.createElement("button");
-      pin.className = `pin ${comment.status}${comment.replies.length ? " answered" : ""}`;
-      pin.textContent = String(index + 1);
+      pin.className = `pin ${comment.status}${comment.replies.length ? " answered" : ""}${comment.id === openId ? " active" : ""}`;
+      pin.dataset.pin = comment.id;
+      pin.innerHTML = `<span>${index + 1}</span><span class="peek">${escape(comment.text)}${
+        comment.replies.length
+          ? `<em>${comment.replies.length} ${comment.replies.length === 1 ? "reply" : "replies"}</em>`
+          : ""
+      }</span>`;
       pin.setAttribute("aria-label", `Comment ${index + 1}: ${comment.text}`);
-      pin.style.left = `${Math.min(rect.right - 10, innerWidth - 28)}px`;
-      pin.style.top = `${Math.max(rect.top - 10, 4)}px`;
-      pin.addEventListener("click", () => openThread(comment, pin));
+      pin.style.left = `${Math.min(rect.right - 6, innerWidth - 30)}px`;
+      pin.style.top = `${Math.max(rect.top - 26, 4)}px`;
+      pin.addEventListener("click", () => openThread(comment.id));
       layer.append(pin);
     });
   }
 
+  /** A card beside `near`: under it if there's room, else above. */
   const card = (html: string, near: DOMRect) => {
     root.querySelector(".thread")?.remove();
     const box = document.createElement("div");
     box.className = "thread";
+    box.setAttribute("role", "dialog");
     box.innerHTML = html;
-    box.style.left = `${Math.min(Math.max(near.left, 8), innerWidth - 328)}px`;
-    box.style.top = `${near.bottom + 8 > innerHeight - 220 ? Math.max(near.top - 228, 8) : near.bottom + 8}px`;
+    box.style.left = `${Math.min(Math.max(near.left, 8), innerWidth - 336)}px`;
     root.append(box);
+    const height = box.getBoundingClientRect().height;
+    box.style.top = `${near.bottom + 10 + height > innerHeight - 8 ? Math.max(near.top - height - 10, 8) : near.bottom + 10}px`;
     return box;
   };
+  const message = (by: string | undefined, text: string, at: string) =>
+    `<div class="message"><span class="avatar ${by && by !== "you" ? "agent" : ""}">${initial(by)}</span>
+      <span class="body"><span class="meta"><b>${escape(who(by))}</b> ${ago(at)}</span><span>${escape(text)}</span></span></div>`;
 
-  const openThread = (comment: Comment, pin: HTMLElement) => {
-    const box = card(
-      `<p class="said">${escape(comment.text)}</p>
-       ${comment.replies.map((r) => `<p class="reply"><b>${escape(r.by)}</b> ${escape(r.text)}</p>`).join("")}
-       ${comment.status === "resolved" ? `<p class="resolved">Resolved${comment.resolvedNote ? `: ${escape(comment.resolvedNote)}` : ""}</p>` : ""}
-       <span class="row">
-         <button data-c="close">Close</button>
-         <button data-c="toggle">${comment.status === "open" ? "Resolve" : "Reopen"}</button>
-       </span>`,
-      pin.getBoundingClientRect()
-    );
-    box.addEventListener("click", async (event) => {
-      const action = (event.target as HTMLElement).dataset.c;
-      if (action === "toggle")
+  const threadHtml = (comment: Comment) => {
+    const number = comments.indexOf(comment) + 1;
+    return `<header><b>Comment ${number}</b>${comment.status === "resolved" ? `<span class="tag">Resolved</span>` : ""}
+        <span class="spacer"></span>
+        <button data-c="toggle" class="icon" aria-label="${comment.status === "open" ? "Resolve" : "Reopen"}" title="${comment.status === "open" ? "Resolve" : "Reopen"}">${comment.status === "open" ? icon.check : icon.reopen}</button>
+        <button data-c="close" class="icon" aria-label="Close">${icon.close}</button></header>
+      <div class="messages">
+        ${message(comment.by, comment.text, comment.at)}
+        ${comment.replies.map((r) => message(r.by, r.text, r.at)).join("")}
+        ${comment.status === "resolved" && comment.resolvedNote ? `<p class="note">Resolved: ${escape(comment.resolvedNote)}</p>` : ""}
+      </div>
+      <div class="compose"><textarea rows="1" placeholder="${comment.status === "open" ? "Reply…" : "Reopen and reply…"}"></textarea>
+        <button data-c="reply" class="send" aria-label="Send">${icon.send}</button></div>`;
+  };
+
+  function openThread(id: string) {
+    const comment = comments.find((c) => c.id === id);
+    const pin = layer.querySelector<HTMLElement>(`[data-pin="${id}"]`);
+    if (!comment) return;
+    openId = id;
+    const near = (pin ?? (elementFor(comment) as HTMLElement | null) ?? host).getBoundingClientRect();
+    const box = card(threadHtml(comment), near);
+    wireThread(box, comment);
+    drawPins();
+  }
+  function refreshThread() {
+    const box = root.querySelector<HTMLElement>(".thread[data-for]");
+    const comment = comments.find((c) => c.id === openId);
+    if (!box || !comment) return;
+    const field = box.querySelector("textarea");
+    // Leave it alone while a reply is being written.
+    if (field && (field.value || root.activeElement === field)) return;
+    box.innerHTML = threadHtml(comment);
+    wireThread(box, comment);
+  }
+  function wireThread(box: HTMLElement, comment: Comment) {
+    box.dataset.for = comment.id;
+    const field = box.querySelector("textarea")!;
+    const send = async () => {
+      const text = field.value.trim();
+      if (!text) return;
+      if (comment.status === "resolved") await post({ type: "reopen", id: comment.id, by: "you" });
+      await post({ type: "reply", id: comment.id, by: "you", text });
+      field.value = "";
+      refreshThread();
+    };
+    box.onclick = async (event) => {
+      const action = (event.target as HTMLElement).closest<HTMLElement>("[data-c]")?.dataset.c;
+      if (action === "toggle") {
         await post({ type: comment.status === "open" ? "resolve" : "reopen", id: comment.id, by: "you" });
-      if (action) box.remove();
-    });
+        refreshThread();
+      }
+      if (action === "reply") void send();
+      if (action === "close") closeThread();
+    };
+    field.onkeydown = (event) => {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        void send();
+      }
+      if (event.key === "Escape") closeThread();
+    };
+    field.oninput = () => {
+      field.style.height = "auto";
+      field.style.height = `${Math.min(field.scrollHeight, 120)}px`;
+    };
+  }
+  const closeThread = () => {
+    openId = null;
+    root.querySelector(".thread")?.remove();
+    drawPins();
   };
 
   const post = async (event: Record<string, unknown>) => {
@@ -138,6 +226,7 @@ export const setUpComments = (root: ShadowRoot, host: HTMLElement, where: Where,
   const stopPicking = () => {
     picking = false;
     outline.style.display = "none";
+    hint.hidden = true;
     document.removeEventListener("pointermove", onMove, true);
     document.removeEventListener("click", onPick, true);
     document.removeEventListener("keydown", onKey, true);
@@ -145,7 +234,9 @@ export const setUpComments = (root: ShadowRoot, host: HTMLElement, where: Where,
   };
   const startPicking = () => {
     if (picking) return stopPicking();
+    closeThread();
     picking = true;
+    hint.hidden = false;
     document.addEventListener("pointermove", onMove, true);
     document.addEventListener("click", onPick, true);
     document.addEventListener("keydown", onKey, true);
@@ -155,9 +246,11 @@ export const setUpComments = (root: ShadowRoot, host: HTMLElement, where: Where,
   const write = (el: Element) => {
     const text = ((el as HTMLElement).innerText ?? "").trim().slice(0, 120);
     const box = card(
-      `<p class="about">On ${text ? `“${escape(text.slice(0, 60))}”` : `a ${el.tagName.toLowerCase()}`}</p>
-       <textarea rows="3" placeholder="What should change? It goes to Claude Code."></textarea>
-       <span class="row"><button data-c="cancel">Cancel</button><button data-c="send" class="send">Send</button></span>`,
+      `<header><b>New comment</b><span class="spacer"></span><button data-c="cancel" class="icon" aria-label="Cancel">${icon.close}</button></header>
+       <p class="about">On ${text ? `“${escape(text.slice(0, 70))}”` : `this ${el.tagName.toLowerCase()}`}</p>
+       <div class="compose"><textarea rows="2" placeholder="What should change? Claude gets it with this element."></textarea>
+         <button data-c="send" class="send" aria-label="Post">${icon.send}</button></div>
+       <p class="hint">Enter to post · Shift+Enter for a new line</p>`,
       el.getBoundingClientRect()
     );
     const field = box.querySelector("textarea")!;
@@ -177,15 +270,18 @@ export const setUpComments = (root: ShadowRoot, host: HTMLElement, where: Where,
       });
       box.remove();
     };
-    box.addEventListener("click", (event) => {
-      const action = (event.target as HTMLElement).dataset.c;
+    box.onclick = (event) => {
+      const action = (event.target as HTMLElement).closest<HTMLElement>("[data-c]")?.dataset.c;
       if (action === "send") void send();
       if (action === "cancel") box.remove();
-    });
-    field.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) void send();
+    };
+    field.onkeydown = (event) => {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        void send();
+      }
       if (event.key === "Escape") box.remove();
-    });
+    };
   };
 
   // Replies and resolutions arrive from the agent: look every few seconds; pins follow the page.
@@ -199,7 +295,8 @@ export const setUpComments = (root: ShadowRoot, host: HTMLElement, where: Where,
   return {
     startPicking,
     redraw: drawPins,
+    open: openThread,
     all: () => comments,
-    onChange: (listener: (open: number) => void) => (onChange = listener),
+    onChange: (listener: (open: number) => void) => listeners.push(listener),
   };
 };

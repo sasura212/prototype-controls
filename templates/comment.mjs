@@ -93,8 +93,11 @@ if (isMain) {
     const check = () => {
       const events = readEvents();
       if (events.length < seen) seen = events.length;
-      for (const event of events.slice(seen))
+      for (const event of events.slice(seen)) {
         if (event.type === "comment") console.log(oneLine({ ...event, status: "open" }));
+        // Their answer on a thread is for the agent too; the agent's own replies aren't news to it.
+        if (event.type === "reply" && event.by === "you") console.log(`${event.id} reply from you: “${event.text}”`);
+      }
       seen = events.length;
     };
     // A file watch plus a timer: the watch can miss a write that lands as it starts.

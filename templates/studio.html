@@ -8,8 +8,10 @@
       :root {
         --ink: #101828;
         --ink-2: #475467;
+        --ink-3: #98a2b3;
         --line: #e4e7ec;
-        --ground: #f2f4f7;
+        --ground: #eef0f3;
+        --field: #f2f4f7;
         --accent: #2970ff;
         --rec: #f04438;
       }
@@ -25,9 +27,13 @@
         color: var(--ink);
         font:
           13px/1.4 system-ui,
+          -apple-system,
+          "Segoe UI",
           sans-serif;
+        -webkit-font-smoothing: antialiased;
       }
       header {
+        position: relative;
         display: flex;
         flex-wrap: wrap;
         gap: 8px;
@@ -36,40 +42,97 @@
         border-bottom: 1px solid var(--line);
         background: #fff;
       }
-      header .sizes {
+      .group {
         display: flex;
-        gap: 2px;
-        padding: 2px;
+        gap: 4px;
+        align-items: center;
+      }
+      .divider {
+        width: 1px;
+        height: 20px;
+        margin: 0 4px;
+        background: var(--line);
+      }
+      button,
+      a.button,
+      select,
+      input {
+        height: 32px;
+        border: 0;
         border-radius: 8px;
-        background: var(--ground);
+        font: inherit;
+        color: var(--ink);
       }
       button,
       a.button {
-        padding: 6px 10px;
-        border: 0;
-        border-radius: 6px;
-        background: transparent;
-        color: var(--ink);
-        font: inherit;
+        display: inline-flex;
+        gap: 6px;
+        align-items: center;
+        padding: 0 12px;
+        background: var(--field);
         text-decoration: none;
         cursor: pointer;
       }
-      .sizes button[aria-pressed="true"] {
-        background: #fff;
-        box-shadow: 0 1px 2px rgb(0 0 0 / 0.1);
-      }
-      .action {
-        background: var(--ground);
-      }
-      .action:hover {
+      button:hover,
+      a.button:hover {
         background: var(--line);
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      select {
+        padding: 0 8px;
+        background: var(--field);
+        cursor: pointer;
+      }
+      /* Width × height, typed: the frame follows. */
+      .size {
+        display: flex;
+        gap: 2px;
+        align-items: center;
+        padding: 0 4px;
+        border-radius: 8px;
+        background: var(--field);
+        color: var(--ink-3);
+      }
+      .size input {
+        width: 52px;
+        height: 28px;
+        padding: 0 4px;
+        background: transparent;
+        text-align: center;
+        font-variant-numeric: tabular-nums;
+      }
+      .size input:focus {
+        background: #fff;
+        outline: 2px solid var(--accent);
       }
       .recording {
         background: var(--rec);
         color: #fff;
       }
+      .recording:hover {
+        background: #d92d20;
+      }
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: var(--rec);
+      }
+      .recording .dot {
+        background: #fff;
+        animation: blink 1s steps(2, start) infinite;
+      }
+      @keyframes blink {
+        to {
+          visibility: hidden;
+        }
+      }
       button:focus-visible,
-      a.button:focus-visible {
+      a.button:focus-visible,
+      select:focus-visible {
         outline: 2px solid var(--accent);
         outline-offset: 2px;
       }
@@ -82,37 +145,171 @@
       #status a {
         color: var(--accent);
       }
+      /* The tour's progress, along the bottom of the header. */
+      .progress {
+        position: absolute;
+        bottom: -1px;
+        left: 0;
+        height: 2px;
+        background: var(--accent);
+        transition: width 300ms ease;
+      }
       main {
+        position: relative;
         display: grid;
         flex: 1;
         place-items: center;
         overflow: auto;
-        padding: 16px;
+        padding: 24px;
+      }
+      /* The device: the frame plus its handles, sized by dragging or typing. A device bigger than the
+         window is shown scaled down to fit, inside a box the size it takes up. */
+      .viewport {
+        position: relative;
+        width: 100%;
+        height: 100%;
+      }
+      .device {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        transform-origin: 0 0;
       }
       iframe {
+        display: block;
         width: 100%;
         height: 100%;
         border: 0;
-        border-radius: 8px;
+        border-radius: 10px;
         background: #fff;
-        box-shadow: 0 8px 24px rgb(0 0 0 / 0.12);
+        box-shadow:
+          0 0 0 1px rgb(16 24 40 / 0.06),
+          0 12px 32px rgb(16 24 40 / 0.12);
+      }
+      .resizing iframe {
+        pointer-events: none;
+      }
+      .handle {
+        position: absolute;
+        display: grid;
+        place-items: center;
+        touch-action: none;
+      }
+      .handle::after {
+        content: "";
+        border-radius: 999px;
+        background: var(--ink-3);
+        transition: background-color 120ms ease;
+      }
+      .handle:hover::after,
+      .resizing .handle::after {
+        background: var(--accent);
+      }
+      .handle.right {
+        top: 0;
+        right: -16px;
+        width: 16px;
+        height: 100%;
+        cursor: ew-resize;
+      }
+      .handle.right::after {
+        width: 4px;
+        height: 40px;
+      }
+      .handle.bottom {
+        bottom: -16px;
+        left: 0;
+        width: 100%;
+        height: 16px;
+        cursor: ns-resize;
+      }
+      .handle.bottom::after {
+        width: 40px;
+        height: 4px;
+      }
+      .handle.corner {
+        right: -16px;
+        bottom: -16px;
+        width: 16px;
+        height: 16px;
+        cursor: nwse-resize;
+      }
+      .handle.corner::after {
+        width: 8px;
+        height: 8px;
+      }
+      .badge {
+        position: absolute;
+        top: -28px;
+        left: 50%;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: var(--ink);
+        color: #fff;
+        font-size: 11px;
+        font-variant-numeric: tabular-nums;
+        transform: translateX(-50%);
+        opacity: 0;
+        transition: opacity 120ms ease;
+        pointer-events: none;
+      }
+      .resizing .badge,
+      .zoomed .badge {
+        opacity: 1;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .progress,
+        .handle::after,
+        .badge {
+          transition: none;
+        }
+        .recording .dot {
+          animation: none;
+        }
       }
     </style>
   </head>
   <body>
     <header>
-      <span class="sizes" role="group" aria-label="Viewport">
-        <button data-size="fit" aria-pressed="true">Fit</button>
-        <button data-size="1280x800">Laptop</button>
-        <button data-size="768x1024">Tablet</button>
-        <button data-size="390x844">Phone</button>
+      <span class="group">
+        <select id="preset" aria-label="Device size">
+          <option value="fit">Fit to window</option>
+          <option value="1440x900">Desktop · 1440 × 900</option>
+          <option value="1280x800">Laptop · 1280 × 800</option>
+          <option value="1024x768">Tablet landscape · 1024 × 768</option>
+          <option value="768x1024">Tablet · 768 × 1024</option>
+          <option value="390x844">Phone · 390 × 844</option>
+          <option value="375x667">Small phone · 375 × 667</option>
+          <option value="custom" hidden>Custom</option>
+        </select>
+        <span class="size" title="Type a size, or drag the frame's edges">
+          <input id="width" inputmode="numeric" aria-label="Width" /> ×
+          <input id="height" inputmode="numeric" aria-label="Height" />
+        </span>
+        <button id="rotate" aria-label="Swap width and height" title="Swap width and height">⟲</button>
       </span>
-      <button id="record" class="action">● Record</button>
-      <button id="tour" class="action">📸 Screenshot every step and error</button>
-      <a class="button action" href="/__prototype/sheet" target="_blank">Contact sheet ↗</a>
-      <span id="status" aria-live="polite">The flow plays in the frame below, with the player on it.</span>
+      <span class="divider"></span>
+      <span class="group">
+        <button id="record"><span class="dot"></span><span class="recordLabel">Record</span></button>
+        <button id="tour">📸 Screenshot every step and error</button>
+        <a class="button" href="/__prototype/sheet" target="_blank">Contact sheet ↗</a>
+      </span>
+      <span id="status" aria-live="polite">Drag the frame's edges to resize it.</span>
+      <span class="progress" style="width: 0"></span>
     </header>
-    <main><iframe title="The flow"></iframe></main>
+    <main>
+      <div class="viewport">
+        <div class="device">
+          <span class="badge"></span>
+          <iframe title="The flow"></iframe>
+          <span class="handle right" data-resize="x" aria-hidden="true"></span>
+          <span class="handle bottom" data-resize="y" aria-hidden="true"></span>
+          <span class="handle corner" data-resize="xy" aria-hidden="true"></span>
+        </div>
+      </div>
+    </main>
     <script type="module" src="/.prototype/studio.ts"></script>
   </body>
 </html>

@@ -30,7 +30,15 @@ type Shot = {
 const frame = document.querySelector<HTMLIFrameElement>("iframe")!;
 const status = document.querySelector<HTMLElement>("#status")!;
 const recordButton = document.querySelector<HTMLButtonElement>("#record")!;
+const recordLabel = document.querySelector<HTMLElement>(".recordLabel")!;
 const tourButton = document.querySelector<HTMLButtonElement>("#tour")!;
+const progress = document.querySelector<HTMLElement>(".progress")!;
+const device = document.querySelector<HTMLElement>(".device")!;
+const viewport = document.querySelector<HTMLElement>(".viewport")!;
+const badge = document.querySelector<HTMLElement>(".badge")!;
+const preset = document.querySelector<HTMLSelectElement>("#preset")!;
+const widthField = document.querySelector<HTMLInputElement>("#width")!;
+const heightField = document.querySelector<HTMLInputElement>("#height")!;
 frame.src = script.start;
 
 const say = (html: string) => (status.innerHTML = html);
@@ -48,15 +56,116 @@ const slug = (text: string) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
 
-// Viewport: the frame at a device's size, or filling the studio.
-document.querySelector(".sizes")!.addEventListener("click", (event) => {
-  const button = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-size]");
-  if (!button) return;
-  document.querySelectorAll("[data-size]").forEach((b) => b.setAttribute("aria-pressed", String(b === button)));
-  const [width, height] =
-    button.dataset.size === "fit" ? ["100%", "100%"] : button.dataset.size!.split("x").map((n) => `${n}px`);
-  Object.assign(frame.style, { width, height });
+// ------------------------------------------------------------------------------------------------
+// The frame's size: fit to the window, a device from the list, typed in, or dragged by its edges.
+// Remembered between visits.
+// ------------------------------------------------------------------------------------------------
+type Size = { width: number; height: number } | null;
+const SIZE_KEY = "prototype-studio-size";
+const stage = () => viewport.parentElement!.getBoundingClientRect();
+/** How much a device bigger than the window is scaled down to fit (1 when it fits). */
+let zoom = 1;
+let size: Size = null;
+try {
+  size = JSON.parse(localStorage.getItem(SIZE_KEY) ?? "null");
+} catch {
+  // Storage blocked: start fitted to the window.
+}
+const applySize = () => {
+  const room = stage();
+  if (size) {
+    zoom = Math.min(1, (room.width - 64) / size.width, (room.height - 64) / size.height);
+    Object.assign(viewport.style, { width: `${size.width * zoom}px`, height: `${size.height * zoom}px` });
+    Object.assign(device.style, {
+      width: `${size.width}px`,
+      height: `${size.height}px`,
+      transform: zoom < 1 ? `scale(${zoom})` : "",
+    });
+  } else {
+    zoom = 1;
+    Object.assign(viewport.style, { width: "100%", height: "100%" });
+    Object.assign(device.style, { width: "100%", height: "100%", transform: "" });
+  }
+  const shown = size ?? { width: Math.round(room.width - 48), height: Math.round(room.height - 48) };
+  if (document.activeElement !== widthField) widthField.value = String(Math.round(shown.width));
+  if (document.activeElement !== heightField) heightField.value = String(Math.round(shown.height));
+  badge.textContent = `${Math.round(shown.width)} × ${Math.round(shown.height)}${zoom < 1 ? ` · ${Math.round(zoom * 100)}%` : ""}`;
+  device.classList.toggle("zoomed", zoom < 1);
+  const match = size ? `${size.width}x${size.height}` : "fit";
+  preset.value = [...preset.options].some((o) => o.value === match) ? match : "custom";
+};
+const setSize = (next: Size) => {
+  size = next && { width: Math.max(240, Math.round(next.width)), height: Math.max(240, Math.round(next.height)) };
+  try {
+    localStorage.setItem(SIZE_KEY, JSON.stringify(size));
+  } catch {
+    // Storage blocked: the size lasts until the page reloads.
+  }
+  applySize();
+};
+preset.addEventListener("change", () => {
+  if (preset.value === "fit") return setSize(null);
+  if (preset.value === "custom") return;
+  const [width, height] = preset.value.split("x").map(Number);
+  setSize({ width, height });
 });
+const typed = () => {
+  const width = Number(widthField.value);
+  const height = Number(heightField.value);
+  if (width > 0 && height > 0) setSize({ width, height });
+};
+for (const field of [widthField, heightField]) {
+  field.addEventListener("change", typed);
+  field.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") typed();
+    // Arrow keys nudge by 1, or by 10 with Shift, like a design tool.
+    if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+      event.preventDefault();
+      const step = (event.shiftKey ? 10 : 1) * (event.key === "ArrowUp" ? 1 : -1);
+      field.value = String(Number(field.value) + step);
+      typed();
+    }
+  });
+}
+document.querySelector("#rotate")!.addEventListener("click", () => {
+  const current = size ?? { width: Number(widthField.value), height: Number(heightField.value) };
+  setSize({ width: current.height, height: current.width });
+});
+// Dragging an edge or the corner: the frame grows from its centre, so both sides move.
+device.addEventListener("pointerdown", (event) => {
+  const handle = (event.target as HTMLElement).closest<HTMLElement>("[data-resize]");
+  if (!handle) return;
+  const axis = handle.dataset.resize!;
+  const start = {
+    x: event.clientX,
+    y: event.clientY,
+    ...(size ?? { width: Number(widthField.value), height: Number(heightField.value) }),
+  };
+  try {
+    handle.setPointerCapture(event.pointerId);
+  } catch {
+    // A synthetic pointer can't be captured; the drag still follows it.
+  }
+  device.classList.add("resizing");
+  // Pointer movement is in screen pixels; a scaled-down device needs it in its own.
+  const scale = zoom;
+  const move = (e: PointerEvent) =>
+    setSize({
+      width: axis.includes("x") ? start.width + ((e.clientX - start.x) * 2) / scale : start.width,
+      height: axis.includes("y") ? start.height + ((e.clientY - start.y) * 2) / scale : start.height,
+    });
+  const end = () => {
+    device.classList.remove("resizing");
+    handle.removeEventListener("pointermove", move);
+    handle.removeEventListener("pointerup", end);
+    handle.removeEventListener("pointercancel", end);
+  };
+  handle.addEventListener("pointermove", move);
+  handle.addEventListener("pointerup", end);
+  handle.addEventListener("pointercancel", end);
+});
+addEventListener("resize", applySize);
+applySize();
 
 /** The player in the frame, once its page has loaded (it reloads for replays and error paths). */
 const player = async (): Promise<Player> => {
@@ -181,8 +290,11 @@ tourButton.addEventListener("click", async () => {
     await sleep(1500);
     await player();
     await sleep(2500);
+    const total = script.chapters.length + (script.paths?.length ?? 0);
+    const advance = (done: number) => (progress.style.width = `${(done / total) * 100}%`);
     for (const [index, title] of script.chapters.map((c) => c.title).entries()) {
       say(`Step ${index + 1} of ${script.chapters.length}: ${title}…`);
+      advance(index);
       if (index > 0) {
         (await player()).goTo(index);
         await settled();
@@ -192,13 +304,14 @@ tourButton.addEventListener("click", async () => {
     }
     for (const [index, path] of (script.paths ?? []).entries()) {
       say(`Error ${index + 1} of ${script.paths!.length}: ${path.label}…`);
+      advance(script.chapters.length + index);
       (await player()).showPath(path.id);
       await sleep(1500);
       await settled();
       shots.push(await shoot(run, `error-${path.id}`, "error", path.label));
     }
     const manifest = JSON.stringify(
-      { run, at: new Date().toISOString(), viewport: frame.style.width || "fit", shots },
+      { run, at: new Date().toISOString(), viewport: `${widthField.value} × ${heightField.value}`, shots },
       null,
       2
     );
@@ -213,6 +326,7 @@ tourButton.addEventListener("click", async () => {
     say(`Stopped: ${error instanceof Error ? error.message : String(error)}`);
   } finally {
     tourButton.disabled = false;
+    progress.style.width = "0";
   }
 });
 
@@ -237,17 +351,23 @@ recordButton.addEventListener("click", async () => {
     const chunks: Blob[] = [];
     recorder = new MediaRecorder(canvas.captureStream(30), { mimeType: type });
     recorder.addEventListener("dataavailable", (event) => chunks.push(event.data));
+    const began = Date.now();
+    const clock = setInterval(() => {
+      const seconds = Math.floor((Date.now() - began) / 1000);
+      recordLabel.textContent = `Stop · ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+    }, 250);
     recorder.addEventListener("stop", async () => {
       drawing = false;
       recorder = null;
-      recordButton.textContent = "● Record";
+      clearInterval(clock);
+      recordLabel.textContent = "Record";
       recordButton.classList.remove("recording");
       const file = `recordings/${new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19)}.${type.startsWith("video/mp4") ? "mp4" : "webm"}`;
       await save(file, new Blob(chunks, { type }));
       say(`Saved <a href="/__prototype/file?path=${encodeURIComponent(file)}" target="_blank">.prototype/${file}</a>`);
     });
     recorder.start(1000);
-    recordButton.textContent = "■ Stop recording";
+    recordLabel.textContent = "Stop · 0:00";
     recordButton.classList.add("recording");
     say("Recording. Play the flow in the frame, then stop.");
     (await player()).play();

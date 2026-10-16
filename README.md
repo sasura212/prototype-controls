@@ -11,6 +11,8 @@ Run `/prototype-controls` on a flow and Claude adds a dark player bar to the pag
   fields and clicks the real buttons. Long waits (a search that takes minutes) go by fast.
 - **Pause** freezes the page like a paused video: timers, animations, everything.
 - **Previous / next** move a step. **Replay** starts over. **Speed** goes from 0.5× to 4×.
+- **Drag** the bar anywhere by its grip; it stays there. Double-click the grip to put it back.
+  **Minimize** shrinks it to a round button with a progress ring.
 
 **See every state**
 
@@ -25,16 +27,19 @@ Run `/prototype-controls` on a flow and Claude adds a dark player bar to the pag
 - Press **💬**, click anything on the page, and write what should change. The comment goes to
   Claude Code along with the step and the element it's about, and arrives in the conversation as
   you post it.
-- Claude makes the change, replies and resolves it. A numbered pin marks each comment on the page
-  and shows the reply. Any other agent can read the same comments from a plain file.
+- Claude makes the change, replies and resolves it. A numbered pin marks each comment on the page;
+  hover it for a preview, click it for the thread, and reply right there. Your replies go to
+  Claude too. All comments are listed in the panel, open or resolved. Any other agent can read
+  the same comments from a plain file.
 
 **Review it**
 
 - **Check this screen** flags buttons with no name, images with no alt text, fields with no
   label, low contrast, and words your style guide rules out.
 - **Timing** shows how long each step takes at 1×.
-- The **studio** (`/__prototype/studio`) shows the flow at laptop, tablet or phone size, **records**
-  a play-through to MP4, and **screenshots every step and every error** in one go.
+- The **studio** (`/__prototype/studio`) shows the flow at any size: drag the frame's edges or
+  corner, type a width and height, or pick a device. A device bigger than the window is scaled to
+  fit. It **records** a play-through to MP4 and **screenshots every step and every error** in one go.
 - The **contact sheet** (`/__prototype/sheet`) lays those screenshots out with what changed since
   the last run, what the checks found, the timings and the comments.
 
