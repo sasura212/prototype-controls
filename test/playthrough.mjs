@@ -116,6 +116,37 @@ try {
     assert.match(await evaluate("document.body.innerText"), /That code doesn't match/);
   });
 
+  await check("Send goes away once the drafts are sent, with the pointer still on it", async () => {
+    // Real mouse and keys, so :hover is real: it once kept the hidden button showing "Send 0".
+    const bar = (selector) =>
+      `document.querySelector("[data-prototype-overlay]").shadowRoot.querySelector(${JSON.stringify(selector)})`;
+    const click = async (element) => {
+      const at = await evaluate(
+        `(() => { const r = (${element}).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`
+      );
+      await page("Input.dispatchMouseEvent", { type: "mouseMoved", ...at });
+      for (const type of ["mousePressed", "mouseReleased"])
+        await page("Input.dispatchMouseEvent", { type, ...at, button: "left", clickCount: 1 });
+    };
+    const send = bar(".tools [data-do=sendComments]");
+    await click(bar(".tools [data-do=comment]"));
+    await click(`document.querySelector('[aria-label="Code digit 3"]')`);
+    // The editor takes focus a tick after it opens.
+    await until(`(() => {
+      let el = document.activeElement;
+      while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
+      return el?.tagName === "TEXTAREA";
+    })()`);
+    await page("Input.insertText", { text: "Bigger boxes" });
+    for (const type of ["keyDown", "keyUp"])
+      await page("Input.dispatchKeyEvent", { type, key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 });
+    await until(`!(${send}).hidden`);
+    await click(send);
+    assert.equal(await evaluate(`(${send}).matches(":hover")`), true, "the pointer isn't on the button");
+    await until(`(${send}).hidden`);
+    assert.equal(await evaluate(`getComputedStyle(${send}).display`), "none");
+  });
+
   await check("the player's timing is saved through the file API", async () => {
     const timing = await evaluate("fetch('/__prototype/file?path=timing.json').then((r) => r.ok && r.json())");
     assert.ok(timing && "Welcome" in timing, JSON.stringify(timing));

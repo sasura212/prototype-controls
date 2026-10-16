@@ -246,7 +246,9 @@ textarea:focus-visible {
   white-space: nowrap;
 }
 
+/* :hover too, or the rule above outranks this one while the pointer is still on the button. */
 .tools .sendComments[hidden],
+.tools .sendComments[hidden]:hover,
 .wide[hidden] {
   display: none;
 }
