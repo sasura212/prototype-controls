@@ -38,6 +38,10 @@ export type Path = {
   label: string;
   /** Where this path starts, if not `script.start` (e.g. a URL that opens a scenario). */
   start?: string;
+  /** The chapter the flow is on when `start` opens: the ones before it are already behind. */
+  at?: string;
+  /** The message this path is for. Picking the path plays fast up to it, then pauses there to read. */
+  shows?: string;
   /** Before it loads: set a mock backend's scenario, seed storage. */
   setup?: () => Promise<void> | void;
   /** Chapters that play differently on this path, by title. */
@@ -169,6 +173,8 @@ type Saved = {
   /** Paused by the viewer: the page is frozen. */
   frozen: boolean;
   path: string | null;
+  /** Playing fast until this text is on the page, then pausing there (a path's message). */
+  stopAt: string | null;
 };
 const KEY = "prototype-overlay";
 const FIND_MS = 20_000;
@@ -179,6 +185,7 @@ const fresh: Saved = {
   playing: false,
   frozen: false,
   path: null,
+  stopAt: null,
 };
 
 const load = (): Saved => {
@@ -226,8 +233,19 @@ const set = (next: Partial<Saved>) => {
 class Stop extends Error {}
 const realSleep = (ms: number) => new Promise<void>((resolve) => real.setTimeout(resolve, ms));
 
+/** Stops on a path's message once it's on screen: the page freezes there, ready to read. */
+function checkStop() {
+  if (!state.stopAt || !norm(document.body?.innerText).includes(norm(state.stopAt))) return;
+  // Back to normal speed first, so the message finishes arriving (a fade, a slide), then freeze.
+  set({ stopAt: null, target: null, playing: false });
+  real.setTimeout(() => {
+    if (!state.playing && !isSkipping()) set({ frozen: true });
+  }, 800);
+}
+
 /** Holds while paused; returns at once while playing or moving ahead. */
 const gate = async (mine: number) => {
+  checkStop();
   while (!state.playing && !isSkipping()) {
     await new Promise<void>((resolve) => (wake = resolve));
     if (mine !== generation) throw new Stop();
@@ -254,17 +272,22 @@ const CLICKABLE =
   "button, a, [role=button], [role=tab], [role=option], [role=menuitem], [role=checkbox], [role=switch], [role=radio], label, summary";
 const FIELDS = "input:not([type=hidden]), textarea, [contenteditable=true]";
 
+/** What a person can act on: the open dialog if there is one (it covers the rest), else the page. */
+const scope = (): ParentNode => {
+  const dialogs = [...document.querySelectorAll("[role=dialog], [role=alertdialog], dialog[open]")].filter(isShown);
+  return dialogs.at(-1) ?? document;
+};
 const pick = <T extends Element>(all: T[], names: (el: T) => string[], want: string) =>
   all.find((el) => names(el).some((name) => norm(name) === want)) ??
   all.find((el) => names(el).some((name) => norm(name).includes(want)));
 const findClickable = (target: Target) => {
   if (typeof target !== "string") return document.querySelector<HTMLElement>(target.css);
-  const all = [...document.querySelectorAll<HTMLElement>(CLICKABLE)].filter(isShown);
+  const all = [...scope().querySelectorAll<HTMLElement>(CLICKABLE)].filter(isShown);
   return pick(all, (el) => [el.innerText, el.getAttribute("aria-label") ?? "", el.title], norm(target)) ?? null;
 };
 const findField = (target: Target) => {
   if (typeof target !== "string") return document.querySelector<HTMLElement>(target.css);
-  const all = [...document.querySelectorAll<HTMLElement>(FIELDS)].filter(isShown);
+  const all = [...scope().querySelectorAll<HTMLElement>(FIELDS)].filter(isShown);
   const labelOf = (el: HTMLElement) =>
     [...((el as HTMLInputElement).labels ?? [])].map((label) => label.innerText).join(" ");
   const names = (el: HTMLElement) => [
@@ -283,6 +306,7 @@ const until = async <T>(find: () => T | null | undefined, what: string, mine: nu
   for (;;) {
     if (mine !== generation) throw new Stop();
     const found = find();
+    checkStop();
     if (found) {
       if (stuck) {
         stuck = null;
@@ -411,8 +435,16 @@ const run = async () => {
         frozen: arrived && !state.playing,
       });
     }
+    // Out of steps before the message showed: the flow may still be on its way there (a navigation, a
+    // run), so give it a while on the fast clock before saying it never came.
+    for (let waited = 0; state.stopAt && waited < 30_000; waited += 100) {
+      checkStop();
+      await realSleep(100);
+    }
+    if (mine !== generation) return;
     done = true;
-    set({ playing: false });
+    if (state.stopAt) stuck = `Never saw “${state.stopAt}”`;
+    set({ playing: false, target: null, stopAt: null });
   } catch (error) {
     if (!(error instanceof Stop)) {
       stuck = `Stopped: ${error instanceof Error ? error.message : String(error)}`;
@@ -426,8 +458,13 @@ const run = async () => {
 /** Starts over from the flow's first page and moves ahead to `target`, as fast as the page allows. */
 const restart = async (next: Partial<Saved>) => {
   generation++;
-  // Headed for chapter 1 at least, so the reload knows it's a replay, not a fresh visit.
-  set({ chapter: 0, target: 0, frozen: false, ...next });
+  const chosen = script.paths?.find((item) => item.id === (next.path !== undefined ? next.path : state.path));
+  const from = Math.max(
+    0,
+    script.chapters.findIndex((chapter) => chapter.title === chosen?.at)
+  );
+  // Headed somewhere at least, so the reload knows it's a replay, not a fresh visit.
+  set({ chapter: from, target: from, frozen: false, stopAt: null, ...next });
   await script.reset?.();
   await path()?.setup?.();
   window.location.assign(path()?.start ?? script.start);
@@ -440,8 +477,29 @@ const goTo = (index: number) => {
   if (to > state.chapter) {
     set({ target: to, frozen: false });
     void run();
-  } else void restart({ target: to, playing: state.playing });
+    return;
+  }
+  // Before where the path starts: back on the usual flow.
+  const from = script.chapters.findIndex((chapter) => chapter.title === path()?.at);
+  void restart({ target: to, playing: state.playing, ...(to < from ? { path: null } : {}) });
 };
+/** Opens a path at its message: plays fast up to it and pauses there. Play carries on from it. */
+const showPath = (id: string | null) => {
+  const chosen = script.paths?.find((item) => item.id === id);
+  if (!chosen) return void restart({ path: null, playing: false });
+  void restart({
+    path: chosen.id,
+    playing: false,
+    // Past the last chapter, so every one plays fast until the message shows.
+    ...(chosen.shows ? { target: script.chapters.length, stopAt: chosen.shows } : { playing: true }),
+  });
+};
+// While playing up to a path's message: stop the moment it's on screen. Checked on a timer and
+// whenever the player finds what it waited for, since skipping can move past a message within 100ms.
+real.setTimeout(function watch() {
+  checkStop();
+  real.setTimeout(watch, 100);
+}, 100);
 
 // ------------------------------------------------------------------------------------------------
 // The bar.
@@ -466,7 +524,7 @@ root.innerHTML = `<style>${css}</style>
   <button data-do="controls" aria-label="Prototype controls" aria-expanded="false">⚗</button>
   <div class="controls" hidden>
     <label>Jump to <select data-do="jump"></select></label>
-    <label>Play a path <select data-do="path"></select></label>
+    <label>Errors and edge cases <select data-do="path"></select></label>
   </div>
 </section>`;
 const $ = <T extends Element>(selector: string) => root.querySelector<T>(selector)!;
@@ -475,7 +533,7 @@ const jumpSelect = $<HTMLSelectElement>("[data-do=jump]");
 const pathSelect = $<HTMLSelectElement>("[data-do=path]");
 jumpSelect.innerHTML = script.chapters.map((c, i) => `<option value="${i}">${i + 1} · ${c.title}</option>`).join("");
 pathSelect.innerHTML = [
-  `<option value="">None</option>`,
+  `<option value="">None: the usual flow</option>`,
   ...(script.paths ?? []).map((p) => `<option value="${p.id}">${p.label}</option>`),
 ].join("");
 $<HTMLElement>(".bar").innerHTML = script.chapters.map(() => "<span></span>").join("");
@@ -492,12 +550,12 @@ function render() {
   const chapter = script.chapters[state.chapter];
   $<HTMLElement>(".player").className = `player ${chapter?.placement ?? script.placement ?? "left"}`;
   $<HTMLElement>(".label").textContent = `${state.chapter + 1} of ${count} · ${chapter?.title ?? ""}`;
-  const skippingTo = isSkipping() ? script.chapters[state.target ?? 0]?.title : null;
+  const skippingTo = state.stopAt ? path()?.label : isSkipping() ? script.chapters[state.target ?? 0]?.title : null;
   const note = skippingTo
-    ? `Skipping to ${skippingTo}…`
+    ? `Going to ${skippingTo}…`
     : state.frozen
-      ? "Paused"
-      : (stuck ?? (path() ? `Path: ${path()?.label}` : ""));
+      ? ["Paused", path()?.label].filter(Boolean).join(" · ")
+      : (stuck ?? path()?.label ?? "");
   $<HTMLElement>(".note").textContent = note;
   $<HTMLElement>(".note").classList.toggle("stuck", Boolean(stuck) && !skippingTo && !state.frozen);
   const play = $<HTMLButtonElement>("[data-do=play]");
@@ -532,7 +590,7 @@ root.addEventListener("click", (event) => {
   }
 });
 jumpSelect.addEventListener("change", () => goTo(Number(jumpSelect.value)));
-pathSelect.addEventListener("change", () => void restart({ path: pathSelect.value || null, playing: true }));
+pathSelect.addEventListener("change", () => showPath(pathSelect.value || null));
 
 // Using the page while it's paused takes over from the player: the page's clock runs again.
 document.addEventListener(
@@ -542,6 +600,36 @@ document.addEventListener(
   },
   true
 );
+
+/**
+ * A handle for checking the script from a browser tool (devtools, Playwright): drive the player and
+ * read where it is, without clicking the bar. `window.__prototype.result()` says where it stopped.
+ */
+Object.assign(window, {
+  __prototype: {
+    chapters: script.chapters.map((chapter) => chapter.title),
+    paths: (script.paths ?? []).map(({ id, label, shows }) => ({ id, label, shows })),
+    play: () => {
+      if (!state.playing) root.querySelector<HTMLButtonElement>("[data-do=play]")?.click();
+    },
+    pause: () => {
+      if (state.playing || isSkipping()) root.querySelector<HTMLButtonElement>("[data-do=play]")?.click();
+    },
+    goTo,
+    showPath,
+    replay: () => restart({ playing: true }),
+    result: () => ({
+      chapter: script.chapters[state.chapter]?.title,
+      playing: state.playing,
+      skipping: isSkipping(),
+      paused: state.frozen,
+      done,
+      path: state.path,
+      waitingFor: stuck,
+      onScreen: state.path ? norm(document.body.innerText).includes(norm(path()?.shows)) : null,
+    }),
+  },
+});
 
 const mount = () => {
   document.body.append(host);

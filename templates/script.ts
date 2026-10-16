@@ -35,6 +35,8 @@ const script: Script = {
     {
       id: "wrong-code",
       label: "Email · wrong code",
+      // Picking it plays fast to this message and pauses there; Play carries on from it.
+      shows: "That code doesn't match",
       // The mock backend decides; set its scenario before the flow loads.
       setup: () =>
         fetch("/__mock/scenario", {

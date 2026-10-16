@@ -9,15 +9,17 @@ Run `/prototype-controls` on a flow and Claude adds a dark player bar to the pag
   fields and clicks the real buttons. Long waits (a search that takes minutes) go by fast.
 - **Pause** freezes the page like a paused video: timers, animations, everything.
 - **Previous / next** move a step. **Replay** starts over.
-- The **⚗ panel** jumps to any step, or plays an error path (a wrong code, a failed search) from
-  where it happens.
+- The **⚗ panel** jumps to any step, and lists every error and edge state the flow has (a wrong
+  code, a failed search, an empty result). Pick one and it goes straight to that message and
+  pauses there so you can read it; Play carries on from it.
 
 ## Why it's useful
 
 - **Watch the flow as a user would.** Pacing problems, steps that drag and abrupt jumps show up
   when you watch, and they don't when you're clicking through quickly.
 - **Get to any step at once.** Jump to the step you're changing instead of clicking from the start.
-- **Test every edge case.** Each error path is one click away.
+- **See every error state.** Each error message is one click away, so you can check its wording
+  and design without working out how to trigger it.
 - **Nothing to clean up.** The player never touches your flow's code, and git never sees it.
   Push your flow and the player stays on your machine.
 
@@ -43,21 +45,25 @@ cp -r prototype-controls ~/.claude/skills/
 
 In Claude Code, with the flow built:
 
-> /prototype-controls on the onboarding flow
+> /prototype-controls
 
-Claude reads the flow, writes the script for it, starts the player's dev server and plays it once
-to check it works. It then gives you the URL and the command to start it again.
+That's all. Claude works out the flow's steps and every error state from the code, writes the
+script, starts a dev server with the player on top, then plays the whole flow and opens every
+error in a browser to check they work, fixing anything that doesn't. You get the URL, the command
+to start it again, and a list of the errors it found, including any it couldn't reach and why.
+Name the flow if you have more than one (`/prototype-controls the checkout flow`).
 
 To remove it, delete `.prototype/` and its line in `.git/info/exclude`.
 
 ## What's inside
 
-| File                                   | What it is                                                 |
-| -------------------------------------- | ---------------------------------------------------------- |
-| `SKILL.md`                             | The steps Claude follows                                   |
-| `templates/overlay.ts` + `overlay.css` | The player, and what drives the page                       |
-| `templates/script.ts`                  | An example script: chapters, a reset, an error path        |
-| `templates/vite.config.mjs`            | Adds the player to the page on top of your own Vite config |
+| File                                   | What it is                                                   |
+| -------------------------------------- | ------------------------------------------------------------ |
+| `SKILL.md`                             | The steps Claude follows                                     |
+| `templates/overlay.ts` + `overlay.css` | The player, and what drives the page                         |
+| `templates/script.ts`                  | An example script: chapters, a reset, an error path          |
+| `templates/vite.config.mjs`            | Adds the player to the page on top of your own Vite config   |
+| `templates/check-wait.js`              | What Claude runs in the browser to check each step and error |
 
 Works with Vite projects. Previous replays from the start to the step before (in seconds), since
 a page can't be wound back. Pause and fast-forward cover timers and `Date.now`, not `new Date()`.
