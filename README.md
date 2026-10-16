@@ -113,11 +113,12 @@ browser. See the top of `templates/comment.mjs`.
 | `templates/comments.ts` + `comment.mjs` | Comments on the page, and their store and command line                  |
 | `templates/checks.ts`                   | Check this screen                                                       |
 | `templates/studio.*` + `sheet.*`        | The studio and the flow review                                          |
+| `templates/tour.mjs`                    | The screenshot tour, in a headless Chrome of its own                    |
 | `templates/vite.config.mjs`             | Adds the player to the page, and saves what it makes into `.prototype/` |
 | `templates/check-wait.js`               | What Claude runs in the browser to check each step and error            |
 | `templates/script.ts`                   | An example script                                                       |
 
 Works with Vite projects. Previous replays from the start to the step before (in seconds), since
-a page can't be wound back. The studio captures the tab with Chrome's screen-share prompt, once per
-session (screenshots don't need it). Screenshot tours need Node 22+ and a Chrome or Edge installed
+a page can't be wound back. Recording captures the tab with Chrome's screen-share prompt, once per
+session; screenshots don't need it. Screenshot tours need Node 22+ and a Chrome or Edge installed
 (or `CHROME_PATH`). Pause and speed cover timers, `Date.now` and animations, not `new Date()`.
