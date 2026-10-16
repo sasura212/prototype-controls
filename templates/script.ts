@@ -31,6 +31,20 @@ const script: Script = {
       },
     },
   ],
+  // Errors found in the code that nothing outside the flow can reach: listed, greyed, with why.
+  unreachable: [
+    { label: "Checkout · card declined", why: "the payment provider's test mode only declines live cards" },
+  ],
+  // "What if": the mock backend's switches, one per entry. Each reloads the page after.
+  scenarios: [
+    {
+      id: "slow",
+      label: "Slow network",
+      set: () => fetch("/__mock/scenario", { method: "POST", body: '{"name":"slow"}' }).then(() => {}),
+    },
+  ],
+  // The style guide's ruled-out words, flagged by "Check this screen".
+  wording: [{ avoid: "Oops", why: "say what happened and what to do instead" }],
   paths: [
     {
       id: "wrong-code",

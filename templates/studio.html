@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Prototype studio</title>
+    <style>
+      :root {
+        --ink: #101828;
+        --ink-2: #475467;
+        --line: #e4e7ec;
+        --ground: #f2f4f7;
+        --accent: #2970ff;
+        --rec: #f04438;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        margin: 0;
+        background: var(--ground);
+        color: var(--ink);
+        font:
+          13px/1.4 system-ui,
+          sans-serif;
+      }
+      header {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--line);
+        background: #fff;
+      }
+      header .sizes {
+        display: flex;
+        gap: 2px;
+        padding: 2px;
+        border-radius: 8px;
+        background: var(--ground);
+      }
+      button,
+      a.button {
+        padding: 6px 10px;
+        border: 0;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--ink);
+        font: inherit;
+        text-decoration: none;
+        cursor: pointer;
+      }
+      .sizes button[aria-pressed="true"] {
+        background: #fff;
+        box-shadow: 0 1px 2px rgb(0 0 0 / 0.1);
+      }
+      .action {
+        background: var(--ground);
+      }
+      .action:hover {
+        background: var(--line);
+      }
+      .recording {
+        background: var(--rec);
+        color: #fff;
+      }
+      button:focus-visible,
+      a.button:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+      #status {
+        flex: 1;
+        min-width: 12rem;
+        color: var(--ink-2);
+        text-align: right;
+      }
+      #status a {
+        color: var(--accent);
+      }
+      main {
+        display: grid;
+        flex: 1;
+        place-items: center;
+        overflow: auto;
+        padding: 16px;
+      }
+      iframe {
+        width: 100%;
+        height: 100%;
+        border: 0;
+        border-radius: 8px;
+        background: #fff;
+        box-shadow: 0 8px 24px rgb(0 0 0 / 0.12);
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <span class="sizes" role="group" aria-label="Viewport">
+        <button data-size="fit" aria-pressed="true">Fit</button>
+        <button data-size="1280x800">Laptop</button>
+        <button data-size="768x1024">Tablet</button>
+        <button data-size="390x844">Phone</button>
+      </span>
+      <button id="record" class="action">● Record</button>
+      <button id="tour" class="action">📸 Screenshot every step and error</button>
+      <a class="button action" href="/__prototype/sheet" target="_blank">Contact sheet ↗</a>
+      <span id="status" aria-live="polite">The flow plays in the frame below, with the player on it.</span>
+    </header>
+    <main><iframe title="The flow"></iframe></main>
+    <script type="module" src="/.prototype/studio.ts"></script>
+  </body>
+</html>

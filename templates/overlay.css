@@ -178,3 +178,168 @@ select {
     transition: none;
   }
 }
+
+/* The panel's extra rows. */
+.controls {
+  max-height: 70vh;
+  overflow: auto;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.text {
+  width: auto;
+  height: auto;
+  padding: 4px 0;
+  border-radius: 4px;
+  color: var(--accent);
+  font: inherit;
+  text-decoration: none;
+}
+
+.suggest p {
+  margin: 0 0 6px;
+  color: var(--warn);
+}
+
+.suggest button,
+.thread button {
+  width: auto;
+  height: auto;
+  margin: 0 6px 6px 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--hover);
+  font: inherit;
+}
+
+.issues,
+.timing ul {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: #d0d5dd;
+}
+
+.issues li {
+  cursor: pointer;
+}
+
+.issues li:hover {
+  color: var(--ink);
+}
+
+.timing summary {
+  color: #d0d5dd;
+  cursor: pointer;
+}
+
+.timing li {
+  display: flex;
+  justify-content: space-between;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Open comments, counted on the 💬 button. */
+.count {
+  position: absolute;
+  margin: -14px 0 0 18px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--ground);
+  font-size: 10px;
+  line-height: 14px;
+}
+
+.count:empty {
+  display: none;
+}
+
+/* Comments on the page: the element being picked, numbered pins, and a pin's thread. */
+.pick {
+  position: fixed;
+  z-index: 2147482998;
+  display: none;
+  border: 2px dashed var(--accent);
+  border-radius: 4px;
+  background: rgb(132 173 255 / 0.08);
+  pointer-events: none;
+}
+
+.pin {
+  position: fixed;
+  z-index: 2147482998;
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--ink);
+  background: var(--accent);
+  color: var(--ground);
+  font:
+    600 11px system-ui,
+    sans-serif;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.3);
+}
+
+.pin.answered {
+  background: var(--warn);
+}
+
+.pin.resolved {
+  background: #98a2b3;
+  opacity: 0.7;
+}
+
+.thread {
+  position: fixed;
+  z-index: 2147483001;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 320px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--ground);
+  color: var(--ink);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.3);
+  font:
+    13px/1.45 system-ui,
+    sans-serif;
+}
+
+.thread p {
+  margin: 0;
+}
+
+.thread .about,
+.thread .resolved {
+  color: #d0d5dd;
+  font-size: 12px;
+}
+
+.thread .reply {
+  padding-left: 8px;
+  border-left: 2px solid var(--accent);
+}
+
+.thread textarea {
+  padding: 8px;
+  border: 1px solid var(--hover);
+  border-radius: 8px;
+  background: var(--hover);
+  color: var(--ink);
+  font: inherit;
+  resize: vertical;
+}
+
+.thread .send {
+  background: var(--ink);
+  color: var(--ground);
+}

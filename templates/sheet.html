@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Contact sheet</title>
+    <style>
+      :root {
+        --ink: #101828;
+        --ink-2: #475467;
+        --line: #e4e7ec;
+        --ground: #f2f4f7;
+        --accent: #2970ff;
+        --warn: #b54708;
+        --warn-bg: #fffaeb;
+        --change: #d92d20;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 24px 16px 48px;
+        background: var(--ground);
+        color: var(--ink);
+        font:
+          13px/1.45 system-ui,
+          sans-serif;
+      }
+      header,
+      section {
+        max-width: 1200px;
+        margin: 0 auto 24px;
+      }
+      h1 {
+        margin: 0 0 4px;
+        font-size: 20px;
+      }
+      h2 {
+        margin: 0 0 12px;
+        font-size: 15px;
+      }
+      .meta {
+        color: var(--ink-2);
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 16px;
+      }
+      .card {
+        overflow: hidden;
+        border-radius: 12px;
+        background: #fff;
+        box-shadow: 0 1px 3px rgb(0 0 0 / 0.08);
+      }
+      .card img {
+        display: block;
+        width: 100%;
+        border-bottom: 1px solid var(--line);
+        cursor: zoom-in;
+      }
+      .card .body {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: 10px 12px 12px;
+      }
+      .title {
+        display: flex;
+        gap: 8px;
+        align-items: baseline;
+        justify-content: space-between;
+        font-weight: 600;
+      }
+      .badge {
+        flex-shrink: 0;
+        padding: 1px 6px;
+        border-radius: 999px;
+        background: var(--ground);
+        color: var(--ink-2);
+        font-size: 11px;
+        font-weight: 500;
+      }
+      .badge.changed {
+        background: #fef3f2;
+        color: var(--change);
+        cursor: pointer;
+      }
+      ul {
+        margin: 0;
+        padding-left: 16px;
+      }
+      .issues {
+        color: var(--warn);
+      }
+      table {
+        width: 100%;
+        max-width: 480px;
+        border-collapse: collapse;
+        background: #fff;
+        border-radius: 12px;
+        overflow: hidden;
+      }
+      td {
+        padding: 6px 12px;
+        border-bottom: 1px solid var(--line);
+      }
+      td:last-child {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+      .comment {
+        margin-bottom: 8px;
+        padding: 10px 12px;
+        border-radius: 8px;
+        background: #fff;
+      }
+      .comment .where {
+        color: var(--ink-2);
+        font-size: 12px;
+      }
+      .empty {
+        color: var(--ink-2);
+      }
+      dialog {
+        max-width: 95vw;
+        padding: 0;
+        border: 0;
+        border-radius: 12px;
+      }
+      dialog img {
+        display: block;
+        max-width: 95vw;
+        max-height: 90vh;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Contact sheet</h1>
+      <p class="meta" id="meta">Loading…</p>
+    </header>
+    <section>
+      <h2>Steps</h2>
+      <div class="grid" id="steps"></div>
+    </section>
+    <section>
+      <h2>Errors and edge cases</h2>
+      <div class="grid" id="errors"></div>
+    </section>
+    <section>
+      <h2>Timing at 1×</h2>
+      <div id="timing"></div>
+    </section>
+    <section>
+      <h2>Comments</h2>
+      <div id="comments"></div>
+    </section>
+    <dialog id="zoom"><img alt="" /></dialog>
+    <script type="module" src="/.prototype/sheet.ts"></script>
+  </body>
+</html>

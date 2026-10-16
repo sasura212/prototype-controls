@@ -6,6 +6,8 @@
 // timers, animations and Date.now) like a paused video, and skipping runs that clock fast.
 import script from "./script";
 import css from "./overlay.css?inline";
+import { audit, type Issue, type WordingRule } from "./checks";
+import { setUpComments } from "./comments";
 
 export type Target = string | { css: string };
 export type Page = {
@@ -57,6 +59,12 @@ export type Script = {
   /** How long a person takes before each click or field (default 1800). */
   beatMs?: number;
   placement?: Placement;
+  /** Error states found in the code that nothing outside the flow can reach, and why: listed, greyed. */
+  unreachable?: { label: string; why: string }[];
+  /** "What if": switch the mock backend (slow, empty, failing) and reload. */
+  scenarios?: { id: string; label: string; set: () => Promise<void> | void }[];
+  /** The style guide's ruled-out words, checked by "Check this screen". */
+  wording?: WordingRule[];
 };
 
 // ------------------------------------------------------------------------------------------------
@@ -139,6 +147,16 @@ const clock = (() => {
     return 0;
   };
 
+  /** Every running CSS animation at the clock's speed; new ones are caught by the check below. */
+  const matchAnimations = () => {
+    for (const animation of document.getAnimations())
+      if (animation.playbackRate !== speed && speed !== 0) animation.playbackRate = speed;
+  };
+  real.setTimeout(function keepUp() {
+    if (speed !== 1 && speed !== 0) matchAnimations();
+    real.setTimeout(keepUp, 50);
+  }, 50);
+
   return {
     set(next: number) {
       if (next === speed) return;
@@ -147,6 +165,8 @@ const clock = (() => {
       const wasStill = speed === 0;
       speed = next;
       timers.forEach(arm);
+      // CSS animations and transitions keep the same time as the rest of the page: faster or slower.
+      if (next !== 0) matchAnimations();
       // Frozen means frozen: CSS animations and transitions hold too, and pick up where they were.
       if (next === 0) {
         pausedAnimations = document.getAnimations().filter((animation) => animation.playState === "running");
@@ -175,6 +195,8 @@ type Saved = {
   path: string | null;
   /** Playing fast until this text is on the page, then pausing there (a path's message). */
   stopAt: string | null;
+  /** Playback speed: the page's clock and the player's beats run this much faster. */
+  rate: number;
 };
 const KEY = "prototype-overlay";
 const FIND_MS = 20_000;
@@ -186,6 +208,7 @@ const fresh: Saved = {
   frozen: false,
   path: null,
   stopAt: null,
+  rate: 1,
 };
 
 const load = (): Saved => {
@@ -204,8 +227,11 @@ const isReload =
   (performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined)?.type === "reload";
 const interruptedAt = state.target === null && state.playing && isReload ? state.chapter : null;
 // Otherwise a load that wasn't headed anywhere and isn't mid-play is a fresh visit: start at the top.
-if (state.target === null && !state.playing) state = { ...fresh };
+if (state.target === null && !state.playing) state = { ...fresh, rate: state.rate };
 let stuck: string | null = null;
+/** How long each chapter takes at 1×, played (not skipped), without the time spent paused. */
+const timings: Record<string, number> = {};
+let issues: Issue[] | null = null;
 let done = false;
 let skipWaits = 0;
 let running = false;
@@ -214,7 +240,7 @@ let wake: (() => void) | null = null;
 
 const isSkipping = () => state.target !== null && state.chapter < state.target;
 const path = () => script.paths?.find((item) => item.id === state.path) ?? null;
-const syncClock = () => clock.set(state.frozen ? 0 : isSkipping() || skipWaits > 0 ? FAST : 1);
+const syncClock = () => clock.set(state.frozen ? 0 : isSkipping() || skipWaits > 0 ? FAST : state.rate);
 const save = () => {
   try {
     sessionStorage.setItem(KEY, JSON.stringify(state));
@@ -222,7 +248,14 @@ const save = () => {
     // Storage blocked: the player still works until the page reloads.
   }
 };
+let frozenSince: number | null = null;
+let frozenMs = 0;
 const set = (next: Partial<Saved>) => {
+  if (next.frozen === true && !state.frozen) frozenSince = real.now();
+  if (next.frozen === false && state.frozen && frozenSince !== null) {
+    frozenMs += real.now() - frozenSince;
+    frozenSince = null;
+  }
   state = { ...state, ...next };
   save();
   syncClock();
@@ -280,12 +313,14 @@ const scope = (): ParentNode => {
 const pick = <T extends Element>(all: T[], names: (el: T) => string[], want: string) =>
   all.find((el) => names(el).some((name) => norm(name) === want)) ??
   all.find((el) => names(el).some((name) => norm(name).includes(want)));
-const findClickable = (target: Target) => {
+const findClickable = (wanted: Target) => {
+  const target = aliased(wanted);
   if (typeof target !== "string") return document.querySelector<HTMLElement>(target.css);
   const all = [...scope().querySelectorAll<HTMLElement>(CLICKABLE)].filter(isShown);
   return pick(all, (el) => [el.innerText, el.getAttribute("aria-label") ?? "", el.title], norm(target)) ?? null;
 };
-const findField = (target: Target) => {
+const findField = (wanted: Target) => {
+  const target = aliased(wanted);
   if (typeof target !== "string") return document.querySelector<HTMLElement>(target.css);
   const all = [...scope().querySelectorAll<HTMLElement>(FIELDS)].filter(isShown);
   const labelOf = (el: HTMLElement) =>
@@ -300,22 +335,71 @@ const findField = (target: Target) => {
 };
 const describe = (target: Target) => (typeof target === "string" ? `“${target}”` : target.css);
 
+/** Saves a file into `.prototype/` through the player's server. */
+const saveFile = (relative: string, data: BodyInit) =>
+  fetch(`/__prototype/file?path=${encodeURIComponent(relative)}`, { method: "POST", body: data }).catch(
+    () => undefined
+  );
+
+/** A label renamed since the script was written, answered from the bar: "use this instead". Kept in aliases.json. */
+let aliases: Record<string, string> = {};
+void fetch("/__prototype/file?path=aliases.json")
+  .then((response) => (response.ok ? response.json() : {}))
+  .then((saved) => (aliases = saved))
+  .catch(() => undefined);
+const aliased = (target: Target): Target => (typeof target === "string" ? (aliases[target] ?? target) : target);
+
+/** When a step is stuck: the labels on screen that look most like the one it wants. */
+let suggestions: { target: string; options: string[] } | null = null;
+const similarity = (a: string, b: string) => {
+  const [x, y] = [new Set(norm(a).split(" ")), new Set(norm(b).split(" "))];
+  const shared = [...x].filter((word) => y.has(word)).length;
+  return shared / Math.max(x.size, y.size) + (norm(b).includes(norm(a)) || norm(a).includes(norm(b)) ? 0.5 : 0);
+};
+const lookAlikes = (target: Target, kind: "click" | "type") => {
+  if (typeof target !== "string") return;
+  const names =
+    kind === "click"
+      ? [...scope().querySelectorAll<HTMLElement>(CLICKABLE)]
+          .filter(isShown)
+          .map((el) => el.innerText || el.getAttribute("aria-label") || "")
+      : [...scope().querySelectorAll<HTMLElement>(FIELDS)]
+          .filter(isShown)
+          .map((el) => el.getAttribute("placeholder") || el.getAttribute("aria-label") || "");
+  const options = [...new Set(names.map((name) => name.trim()).filter((name) => name && name.length < 60))]
+    .map((name) => ({ name, score: similarity(target, name) }))
+    .filter(({ score }) => score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3)
+    .map(({ name }) => name);
+  suggestions = options.length ? { target, options } : null;
+  render();
+};
+
 /** Polls until `find` returns something, saying what it waits on once it's been a while. */
-const until = async <T>(find: () => T | null | undefined, what: string, mine: number, timeoutMs = FIND_MS) => {
+const until = async <T>(
+  find: () => T | null | undefined,
+  what: string,
+  mine: number,
+  timeoutMs = FIND_MS,
+  whenStuck?: () => void
+) => {
   const started = real.now();
   for (;;) {
     if (mine !== generation) throw new Stop();
     const found = find();
     checkStop();
     if (found) {
-      if (stuck) {
+      if (stuck || suggestions) {
         stuck = null;
+        suggestions = null;
         render();
       }
       return found;
     }
     if (real.now() - started > timeoutMs && !stuck) {
       stuck = `Waiting for ${what}`;
+      whenStuck?.();
       render();
     }
     await realSleep(100);
@@ -335,7 +419,7 @@ const setValue = (el: HTMLElement, value: string) => {
 const pageFor = (mine: number): Page => {
   const beforeAct = async () => {
     await gate(mine);
-    await sleep(beat, mine);
+    await sleep(beat / state.rate, mine);
     await gate(mine);
   };
   const waitFor = (target: Target, timeoutMs?: number) =>
@@ -360,7 +444,9 @@ const pageFor = (mine: number): Page => {
           return found && !isOff ? found : null;
         },
         describe(target),
-        mine
+        mine,
+        FIND_MS,
+        () => lookAlikes(target, "click")
       );
       await gate(mine);
       el.scrollIntoView({ block: "nearest" });
@@ -370,7 +456,13 @@ const pageFor = (mine: number): Page => {
     },
     async type(target, text) {
       await beforeAct();
-      const el = await until(() => findField(target), describe(target), mine);
+      const el = await until(
+        () => findField(target),
+        describe(target),
+        mine,
+        FIND_MS,
+        () => lookAlikes(target, "type")
+      );
       el.scrollIntoView({ block: "nearest" });
       el.focus();
       if (isSkipping()) setValue(el, text);
@@ -378,7 +470,7 @@ const pageFor = (mine: number): Page => {
         for (let i = 1; i <= text.length; i++) {
           await gate(mine);
           setValue(el, text.slice(0, i));
-          await sleep(35, mine);
+          await sleep(35 / state.rate, mine);
         }
       el.dispatchEvent(new Event("change", { bubbles: true }));
     },
@@ -401,7 +493,7 @@ const pageFor = (mine: number): Page => {
     },
     async wait(ms) {
       await gate(mine);
-      await sleep(ms, mine);
+      await sleep(ms / state.rate, mine);
     },
     async goto(url) {
       await gate(mine);
@@ -423,17 +515,22 @@ const run = async () => {
     while (state.chapter < script.chapters.length) {
       const chapter = script.chapters[state.chapter];
       await gate(mine);
+      const isTimed = state.playing && !isSkipping();
+      const began = real.now();
+      frozenMs = 0;
       await (path()?.chapters[chapter.title] ?? chapter.run)(pageFor(mine));
       if (mine !== generation) return;
+      if (isTimed && !isSkipping()) timings[chapter.title] = Math.round((real.now() - began - frozenMs) * state.rate);
       const next = state.chapter + 1;
       if (next >= script.chapters.length) break;
       const arrived = state.target !== null && next >= state.target;
-      // Arriving where it was headed: carry on if it was playing, else hold there, frozen.
-      set({
-        chapter: next,
-        target: arrived ? null : state.target,
-        frozen: arrived && !state.playing,
-      });
+      // Arriving where it was headed: carry on if it was playing. If not, hold there frozen, once the
+      // screen has finished arriving (a fade, a slide), so what's held is what a person would see.
+      set({ chapter: next, target: arrived ? null : state.target });
+      if (arrived && !state.playing)
+        real.setTimeout(() => {
+          if (!state.playing && !isSkipping() && state.chapter === next) set({ frozen: true });
+        }, 800);
     }
     // Out of steps before the message showed: the flow may still be on its way there (a navigation, a
     // run), so give it a while on the fast clock before saying it never came.
@@ -445,6 +542,7 @@ const run = async () => {
     done = true;
     if (state.stopAt) stuck = `Never saw “${state.stopAt}”`;
     set({ playing: false, target: null, stopAt: null });
+    if (Object.keys(timings).length) void saveFile("timing.json", JSON.stringify(timings, null, 2));
   } catch (error) {
     if (!(error instanceof Stop)) {
       stuck = `Stopped: ${error instanceof Error ? error.message : String(error)}`;
@@ -521,21 +619,47 @@ root.innerHTML = `<style>${css}</style>
     <span class="bar"></span>
   </span>
   <button data-do="replay" aria-label="Replay from the start">↺</button>
+  <button data-do="comment" aria-label="Comment on something on the page">💬<span class="count"></span></button>
   <button data-do="controls" aria-label="Prototype controls" aria-expanded="false">⚗</button>
   <div class="controls" hidden>
+    <div class="suggest" hidden></div>
     <label>Jump to <select data-do="jump"></select></label>
     <label>Errors and edge cases <select data-do="path"></select></label>
+    <label class="scenarios">What if <select data-do="scenario"></select></label>
+    <label>Speed <select data-do="rate">
+      <option value="0.5">0.5×</option><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option>
+    </select></label>
+    <span class="row">
+      <button data-do="check" class="text">Check this screen</button>
+      <a href="/__prototype/studio" target="_blank" class="text">Studio ↗</a>
+    </span>
+    <ul class="issues" hidden></ul>
+    <details class="timing"><summary>Timing at 1×</summary><ul></ul></details>
   </div>
 </section>`;
 const $ = <T extends Element>(selector: string) => root.querySelector<T>(selector)!;
 const ring = $<HTMLDivElement>(".ring");
 const jumpSelect = $<HTMLSelectElement>("[data-do=jump]");
 const pathSelect = $<HTMLSelectElement>("[data-do=path]");
+const rateSelect = $<HTMLSelectElement>("[data-do=rate]");
+const scenarioSelect = $<HTMLSelectElement>("[data-do=scenario]");
 jumpSelect.innerHTML = script.chapters.map((c, i) => `<option value="${i}">${i + 1} · ${c.title}</option>`).join("");
 pathSelect.innerHTML = [
   `<option value="">None: the usual flow</option>`,
   ...(script.paths ?? []).map((p) => `<option value="${p.id}">${p.label}</option>`),
+  ...(script.unreachable?.length
+    ? [
+        `<optgroup label="Can't be shown from outside the flow">`,
+        ...script.unreachable.map((u) => `<option disabled title="${u.why}">${u.label}: ${u.why}</option>`),
+        `</optgroup>`,
+      ]
+    : []),
 ].join("");
+scenarioSelect.innerHTML = [
+  `<option value="">As it is</option>`,
+  ...(script.scenarios ?? []).map((item) => `<option value="${item.id}">${item.label}</option>`),
+].join("");
+$<HTMLElement>(".scenarios").hidden = !script.scenarios?.length;
 $<HTMLElement>(".bar").innerHTML = script.chapters.map(() => "<span></span>").join("");
 
 /** A ring where the click lands, so a watcher sees what was pressed. */
@@ -569,6 +693,30 @@ function render() {
   });
   jumpSelect.value = String(state.chapter);
   pathSelect.value = state.path ?? "";
+  rateSelect.value = String(state.rate);
+
+  // Stuck: what's on screen that looks like what it wants, one click to use it.
+  const suggest = $<HTMLElement>(".suggest");
+  suggest.hidden = !suggestions;
+  if (suggestions) {
+    suggest.innerHTML = `<p>Can't find “${suggestions.target}”. Use one of these instead?</p>${suggestions.options
+      .map((option) => `<button data-alias="${option.replace(/"/g, "&quot;")}">${option}</button>`)
+      .join("")}`;
+    $<HTMLElement>(".controls").hidden = false;
+  }
+  const list = $<HTMLElement>(".issues");
+  list.hidden = issues === null;
+  list.innerHTML =
+    issues === null
+      ? ""
+      : issues.length
+        ? issues.map((issue, i) => `<li data-issue="${i}">${issue.message}</li>`).join("")
+        : "<li>Nothing found on this screen.</li>";
+  const times = Object.entries(timings);
+  $<HTMLElement>(".timing ul").innerHTML = times.length
+    ? times.map(([title, ms]) => `<li><span>${title}</span><span>${(ms / 1000).toFixed(1)}s</span></li>`).join("")
+    : "<li>Play the flow at any speed to time each step.</li>";
+  comments?.redraw();
 }
 
 root.addEventListener("click", (event) => {
@@ -583,13 +731,38 @@ root.addEventListener("click", (event) => {
   } else if (action === "prev") goTo(state.chapter - 1);
   else if (action === "next") goTo(state.chapter + 1);
   else if (action === "replay") void restart({ playing: true });
-  else if (action === "controls") {
+  else if (action === "comment") comments?.startPicking();
+  else if (action === "check") {
+    issues = audit(script.wording);
+    render();
+  } else if (action === "controls") {
     const panel = $<HTMLElement>(".controls");
     panel.hidden = !panel.hidden;
     $<HTMLButtonElement>("[data-do=controls]").setAttribute("aria-expanded", String(!panel.hidden));
   }
 });
 jumpSelect.addEventListener("change", () => goTo(Number(jumpSelect.value)));
+rateSelect.addEventListener("change", () => set({ rate: Number(rateSelect.value) }));
+scenarioSelect.addEventListener("change", async () => {
+  await script.scenarios?.find((item) => item.id === scenarioSelect.value)?.set();
+  location.reload();
+});
+root.addEventListener("click", (event) => {
+  const el = event.target as HTMLElement;
+  const alias = el.dataset.alias;
+  if (alias && suggestions) {
+    aliases = { ...aliases, [suggestions.target]: alias };
+    void saveFile("aliases.json", JSON.stringify(aliases, null, 2));
+    suggestions = null;
+    render();
+  }
+  const issue = el.dataset.issue !== undefined ? issues?.[Number(el.dataset.issue)] : undefined;
+  const target = issue ? document.querySelector(issue.selector) : null;
+  if (target) {
+    target.scrollIntoView({ block: "center" });
+    ringAt(target);
+  }
+});
 pathSelect.addEventListener("change", () => showPath(pathSelect.value || null));
 
 // Using the page while it's paused takes over from the player: the page's clock runs again.
@@ -605,6 +778,17 @@ document.addEventListener(
  * A handle for checking the script from a browser tool (devtools, Playwright): drive the player and
  * read where it is, without clicking the bar. `window.__prototype.result()` says where it stopped.
  */
+// Comments: anything on the page, sent to the agent.
+const comments = setUpComments(
+  root,
+  host,
+  () => ({ step: script.chapters[state.chapter]?.title ?? "", path: state.path }),
+  real
+);
+comments.onChange((open) => {
+  $<HTMLElement>(".count").textContent = open ? String(open) : "";
+});
+
 Object.assign(window, {
   __prototype: {
     chapters: script.chapters.map((chapter) => chapter.title),
@@ -618,6 +802,14 @@ Object.assign(window, {
     goTo,
     showPath,
     replay: () => restart({ playing: true }),
+    /** Back to the flow's first page, paused there. */
+    restart: () => restart({ playing: false, path: null }),
+    setRate: (rate: number) => set({ rate }),
+    /** Hide the bar (for a clean screenshot) or show it again. */
+    setHidden: (hidden: boolean) => (host.style.display = hidden ? "none" : ""),
+    audit: () => audit(script.wording),
+    timings: () => ({ ...timings }),
+    comments: () => comments.all(),
     result: () => ({
       chapter: script.chapters[state.chapter]?.title,
       playing: state.playing,

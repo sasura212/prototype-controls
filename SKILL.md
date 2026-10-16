@@ -1,28 +1,35 @@
 ---
 name: prototype-controls
-description: Put a video-style player on top of a flow someone is building, so they can watch it play through by itself, jump to any step and see every error state — fully automatic, without touching the flow's code or committing anything. Use when the user runs /prototype-controls, or asks for "prototype controls", "a player on this flow", "autoplay the prototype", "show me all the error states", "make the flow play like a video", or to watch a flow they built. Vite projects.
+description: Put a video-style player on top of a flow someone is building, so they can watch it play through by itself, jump to any step, see every error state, comment on anything (comments come to you to act on), record it, and screenshot every step for review — fully automatic, without touching the flow's code or committing anything. Use when the user runs /prototype-controls, or asks for "prototype controls", "a player on this flow", "autoplay the prototype", "show me all the error states", "make the flow play like a video", "let me comment on the flow", or to watch a flow they built. Vite projects.
 ---
 
 # Prototype controls
 
 A builder's testing tool. The user has built a flow and wants to **watch it work**: press Play and
-see it run step by step the way a person would use it, jump to any step, and open any error state
-to read its message. Nothing about it belongs to the flow, so **nothing about it is committed or
-pushed**: it lives in a local `.prototype/` folder that git never sees, and it drives the real page
-from outside.
+see it run step by step the way a person would use it, jump to any step, open any error state to
+read its message, and **comment on anything they see, for you to act on**. Nothing about it belongs
+to the flow, so **nothing about it is committed or pushed**: it lives in a local `.prototype/`
+folder that git never sees, and it drives the real page from outside.
 
 **This is fully automatic.** The user runs the command and gets a working player: you map the
 flow and its error states yourself, write the script, start it, check every step and every error
-in a browser, fix what doesn't play, and hand over the URL. Don't ask questions you can answer
-from the code. If they named a flow, use it; if not, take the flow they're working on (the
-branch's recent changes, the route they last touched).
+in a browser, fix what doesn't play, start watching for their comments, and hand over the URL.
+Don't ask questions you can answer from the code. If they named a flow, use it; if not, take the
+flow they're working on (the branch's recent changes, the route they last touched).
 
-| Piece      | File                                   | Job                                                                                                                                                                                                                                                                                                                                                         |
-| ---------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| The player | `templates/overlay.ts` + `overlay.css` | A floating bar (in its own shadow DOM): play/pause, previous/next step, replay, and a ⚗ panel to jump to a step or open an error. It plays the script by finding what a person sees (button text, field labels) and clicking and typing into it. It holds the page's clock: pause freezes the page (timers, `Date.now`, animations), skipping runs it fast. |
-| The script | `templates/script.ts` (an example)     | The flow as chapters, plus its error paths. You write it for the flow in front of you.                                                                                                                                                                                                                                                                      |
-| The hook   | `templates/vite.config.mjs`            | The project's own Vite config, plus a plugin that adds the player first in `<head>`, so its clock is in place before the app's code runs.                                                                                                                                                                                                                   |
-| The check  | `templates/check-wait.js`              | Evaluated in the page by a browser tool: waits until the player stops and reports where.                                                                                                                                                                                                                                                                    |
+## What's in `templates/`
+
+| File                         | Job                                                                                                                                                                                                                                                                                                                                                                                |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `overlay.ts` + `overlay.css` | The player bar, in its own shadow DOM. Play/pause, previous/next, replay, 💬 comments, and a ⚗ panel: jump to a step, the errors list, "What if" scenarios, speed (0.5–4×), "Check this screen", timing, and suggestions when a step is stuck. It holds the page's clock: pause freezes the page (timers, `Date.now`, CSS animations), speed and skipping run it slower or faster. |
+| `checks.ts`                  | "Check this screen": controls with no name, images with no alt, fields with no label, low contrast, and words the style guide rules out.                                                                                                                                                                                                                                           |
+| `comments.ts`                | 💬 mode: pick anything on the page, write what should change. Pins show comments and the agent's replies.                                                                                                                                                                                                                                                                          |
+| `comment.mjs`                | The comments' store (`.prototype/comments.jsonl`) and its command line: `list`, `show`, `reply`, `resolve`, `reopen`, `watch`.                                                                                                                                                                                                                                                     |
+| `studio.html` + `studio.ts`  | `/__prototype/studio`: the flow in a frame at Fit, Laptop, Tablet or Phone size, ● Record (MP4/WebM), and 📸 a tour that screenshots every step and error, compares each with the last tour, and runs the checks.                                                                                                                                                                  |
+| `sheet.html` + `sheet.ts`    | `/__prototype/sheet`: the contact sheet from the last tour, with changes, checks, timing and comments.                                                                                                                                                                                                                                                                             |
+| `vite.config.mjs`            | The project's own Vite config, plus the player first in `<head>` (so its clock is in place before the app runs) and the small API that saves into `.prototype/`.                                                                                                                                                                                                                   |
+| `check-wait.js`              | Evaluated in the page by a browser tool: waits until the player stops and says where.                                                                                                                                                                                                                                                                                              |
+| `script.ts`                  | An example script. You write the real one for the flow.                                                                                                                                                                                                                                                                                                                            |
 
 ## 1. Map the flow
 
@@ -50,24 +57,27 @@ Find **every** error and edge state the flow can show, from the code:
 For each, record its message (a short, distinctive piece of the visible text), the step it
 happens at, and how to reach it. One a person can cause, the script causes (types the bad email).
 One that needs the backend uses the existing switch (`start` URL or `setup`). **One that nothing
-outside the flow can reach is reported, not hacked in**: never add a hook to the flow's code.
+outside the flow can reach is listed in `unreachable` with the reason, not hacked in**: never add
+a hook to the flow's code.
 
 ## 3. Set it up
 
 1. Create `.prototype/` at the repo root and add `/.prototype/` to **`.git/info/exclude`** (never
-   `.gitignore`, which is committed). Copy `overlay.ts`, `overlay.css`, `vite.config.mjs` and `check-wait.js` from
-   `templates/` unchanged.
+   `.gitignore`, which is committed). Copy every file in `templates/` except `script.ts` unchanged.
 2. Write `.prototype/script.ts` from the two maps:
    - one chapter per step, each waiting for what a person waits for (`page.waitFor`) and doing what
      they do (`page.click("Continue")`, `page.type("Work email", …)`). A wait nobody should sit
      through (a search that takes minutes) is `page.skipUntil(text)`. Something that only drags
-     when skipping ahead (a video) can step aside with `if (page.isSkipping()) return;`. A chapter
-     sets `placement` when the page has something in that corner.
+     when skipping ahead can step aside with `if (page.isSkipping()) return;`. A chapter sets
+     `placement` when the page has something in that corner.
    - one path per error, labelled "Step · what went wrong", with `at` (the chapter the flow is on
      when it opens), `shows` (its message), `start`/`setup` if it needs a switch, and `chapters`
      overriding the steps that go differently: cause the error, `waitFor` its message, `wait` a
-     few seconds, then get past it the way a person would ("Try again", the right code). Steps the
-     path skips past, or that no longer apply after the error, get an empty `run`.
+     few seconds, then get past it the way a person would. Steps the path skips past, or that no
+     longer apply after the error, get an empty `run`.
+   - `unreachable`: the errors found that nothing outside the flow can reach, each with why.
+   - `scenarios`: if the mock backend has switches (slow, empty, failing), one per switch.
+   - `wording`: if the project has a style guide, the words it rules out, each with why.
    - `reset`: clear what the flow saved, and sign out if the start page needs it.
 3. Start a dev server with the player, beside the usual one. Read how the project runs dev
    (`package.json`). Plain Vite: `npx vite --config .prototype/vite.config.mjs --port <free port>`.
@@ -78,14 +88,14 @@ outside the flow can reach is reported, not hacked in**: never add a hook to the
 
 Open the page in whatever browser tool there is (Chrome DevTools, Playwright, Claude in Chrome).
 If none can reach localhost, start a headless Chromium yourself with `--headless=new
---remote-debugging-port=9222 --user-data-dir=<scratch dir>` (Playwright's download, or the
-installed Chrome) and use the DevTools tools against it.
+--remote-debugging-port=9222 --user-data-dir=<scratch dir>` (add `--auto-accept-this-tab-capture`
+to test the studio) and use the DevTools tools against it.
 
-The player exposes `window.__prototype` for this: `chapters`, `paths`, `play()`, `pause()`,
-`goTo(n)`, `showPath(id)`, `replay()` and `result()`. After each action, evaluate
-`.prototype/check-wait.js` (it waits in real time, since the page's clock may be frozen) and read
-the result. An action that reloads the page ends the evaluation it ran in: start it in one call,
-wait in the next.
+The player exposes `window.__prototype`: `chapters`, `paths`, `play()`, `pause()`, `goTo(n)`,
+`showPath(id)`, `replay()`, `restart()`, `setRate(n)`, `setHidden(b)`, `audit()`, `timings()`,
+`comments()` and `result()`. After each action, evaluate `.prototype/check-wait.js` (it waits in
+real time, since the page's clock may be frozen) and read the result. An action that reloads the
+page ends the evaluation it ran in: start it in one call, wait in the next.
 
 - **The whole flow:** `replay()`, then wait until `done`. If it reports `waitingFor`, the script
   asked for text that isn't there: look at the page, fix the label or the wait, and play again.
@@ -96,10 +106,30 @@ wait in the next.
 Editing `script.ts` reloads the page; the player replays to where it was. Keep going until the
 whole flow and every reachable error pass.
 
-## 5. Hand over
+## 5. Watch for comments, and act on them
 
-Tell the user: the URL, the command to start it again, what plays, the list of errors in the ⚗
-panel, any error it couldn't reach and why, and that `git status` doesn't show any of it.
+Comments are the user telling you what to change, from the page itself. Start following them before
+you hand over, and keep following them for the rest of the session:
+
+- **Claude Code:** run `node .prototype/comment.mjs watch` under the **Monitor** tool. Each comment
+  the user posts arrives as an event: `c3 [open] Work email: “…” on “Send me a code”`.
+- **Any other agent:** tail `.prototype/comments.jsonl` (one JSON event per line), or poll
+  `node .prototype/comment.mjs list --open`.
+
+For each comment: `node .prototype/comment.mjs show <id>` gives the step, the element (selector,
+its text, a slice of its HTML) and the thread. Find the code (search for the element's text), make
+the change in the flow, then `COMMENT_BY=Claude node .prototype/comment.mjs reply <id> "what you
+changed"` and `resolve <id>` once it's done. The reply and the resolution show on the comment's pin
+in the browser. If a comment is a question or needs a decision, reply with the question instead of
+guessing. Comments are about the flow; the player itself is never the thing to change unless the
+comment says so.
+
+## 6. Hand over
+
+Tell the user: the URL, the studio (`/__prototype/studio`) and contact sheet
+(`/__prototype/sheet`), the command to start it again, what plays, the errors in the ⚗ panel, any
+error it couldn't reach and why, that 💬 comments come to you and you're watching for them, and
+that `git status` doesn't show any of it.
 
 ## Rules
 
@@ -109,8 +139,15 @@ panel, any error it couldn't reach and why, and that `git status` doesn't show a
 - **How the controls behave.** Pause freezes the page like a paused video; clicking the page while
   paused hands it back to the user. Previous can't wind the page back, so it replays from the start
   to the step before, fast. Next finishes the step on screen fast. Picking an error plays fast to
-  its message, lets it settle, and pauses there; Play carries on from it. A reload while playing
-  replays back to the same step.
+  its message, lets it settle, and pauses there; Play carries on from it. Arriving at a step paused
+  lets the screen settle before freezing. A reload while playing replays back to the same step.
+- **A stuck step offers look-alikes.** When a label isn't found, the panel lists what's on screen
+  that looks like it; picking one saves it to `.prototype/aliases.json`. When you see that file,
+  fold the aliases into the script and delete them.
+- **The tour's "changed" is against the last tour**, and live content or animations can move a few
+  percent between runs: the sheet calls under 5% a slight change.
 - A chapter shouldn't span a full page load the flow makes itself: put the navigating click last.
-- Only `Date.now` and timers are on the player's clock, not `new Date()` or `performance.now`.
+- Only `Date.now`, timers, animation frames and CSS animations are on the player's clock, not
+  `new Date()` or `performance.now`.
+- The studio captures the tab with the browser's screen-share prompt, once per session.
 - To remove it: delete `.prototype/` and its line in `.git/info/exclude`.
