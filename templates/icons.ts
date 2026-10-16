@@ -24,5 +24,6 @@ export const icon = {
   check: svg(`<path d="M5 12.5l4.5 4.5L19 7.5"/>`),
   reopen: svg(`<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/>`),
   send: svg(`<path d="M12 19V5M5 12l7-7 7 7"/>`),
+  trash: svg(`<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>`),
   studio: svg(`<rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/>`),
 };

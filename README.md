@@ -24,9 +24,10 @@ Run `/prototype-controls` on a flow and Claude adds a dark player bar to the pag
 
 **Comment, and Claude acts on it**
 
-- Press **💬**, click anything on the page, and write what should change. The comment goes to
-  Claude Code along with the step and the element it's about, and arrives in the conversation as
-  you post it.
+- Press **💬**, click anything on the page, and write what should change. Pile up as many as you
+  like as you go through the flow: each waits as a draft (a dashed pin you can still edit or
+  delete) until you press **Send N** on the bar. They reach Claude Code together, as one list, each
+  with the step and the element it's about.
 - Claude makes the change, replies and resolves it. A numbered pin marks each comment on the page;
   hover it for a preview, click it for the thread, and reply right there. Your replies go to
   Claude too. All comments are listed in the panel, open or resolved. Any other agent can read

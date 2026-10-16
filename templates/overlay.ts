@@ -629,6 +629,7 @@ root.innerHTML = `<style>${css}</style>
   </span>
   <span class="tools">
     <button data-do="replay" aria-label="Replay from the start">${icon.replay}</button>
+    <button data-do="sendComments" class="sendComments" hidden>${icon.send}<span></span></button>
     <button data-do="comment" aria-label="Comment on something on the page">${icon.comment}<span class="count"></span></button>
     <button data-do="controls" aria-label="Prototype controls" aria-expanded="false">${icon.settings}</button>
     <button data-do="minimize" aria-label="Minimize the player">${icon.minimize}</button>
@@ -655,6 +656,7 @@ root.innerHTML = `<style>${css}</style>
         <button data-filter="open" role="radio">Open</button><button data-filter="resolved" role="radio">Resolved</button><button data-filter="all" role="radio">All</button>
       </span>
       <ul class="commentList"></ul>
+      <button data-do="sendComments" class="wide primary" hidden>${icon.send} <span></span></button>
       <button data-do="comment" class="wide">${icon.comment} New comment</button>
     </div>
     <div class="tab" data-panel="review" hidden>
@@ -794,6 +796,7 @@ root.addEventListener("click", (event) => {
   else if (action === "next") goTo(state.chapter + 1);
   else if (action === "replay") void restart({ playing: true });
   else if (action === "comment") comments?.startPicking();
+  else if (action === "sendComments") void comments?.sendDrafts();
   else if (action === "minimize") setPlace({ minimized: true });
   else if (action === "check") {
     issues = audit(script.wording);
@@ -826,7 +829,11 @@ function drawCommentList() {
   const all = comments.all();
   const shown = all
     .map((comment, index) => ({ comment, number: index + 1 }))
-    .filter(({ comment }) => commentFilter === "all" || comment.status === commentFilter);
+    // Drafts count as open: they're waiting on something too.
+    .filter(
+      ({ comment }) =>
+        commentFilter === "all" || (comment.status === "draft" ? "open" : comment.status) === commentFilter
+    );
   $<HTMLElement>(".tabCount").textContent = String(all.filter((c) => c.status === "open").length || "");
   $<HTMLElement>(".commentList").innerHTML = shown.length
     ? shown
@@ -834,7 +841,7 @@ function drawCommentList() {
           ({ comment, number }) => `<li><button data-comment="${comment.id}">
             <span class="pinDot ${comment.status}${comment.replies.length ? " answered" : ""}">${number}</span>
             <span class="commentText"><span>${escapeHtml(comment.text)}</span>
-            <small>${escapeHtml(comment.step ?? "")}${comment.replies.length ? ` · ${comment.replies.length} ${comment.replies.length === 1 ? "reply" : "replies"}` : ""}</small></span>
+            <small>${comment.status === "draft" ? "Draft · " : ""}${escapeHtml(comment.step ?? "")}${comment.replies.length ? ` · ${comment.replies.length} ${comment.replies.length === 1 ? "reply" : "replies"}` : ""}</small></span>
           </button></li>`
         )
         .join("")
@@ -972,8 +979,15 @@ const comments = setUpComments(
   () => ({ step: script.chapters[state.chapter]?.title ?? "", path: state.path }),
   real
 );
-comments.onChange((open) => {
+comments.onChange((open, drafts) => {
   $<HTMLElement>(".count").textContent = open ? String(open) : "";
+  // Drafts waiting: one button on the bar and one in the panel sends them all.
+  root.querySelectorAll<HTMLElement>("[data-do=sendComments]").forEach((button) => {
+    button.hidden = !drafts;
+    const label = `Send ${drafts} ${drafts === 1 ? "comment" : "comments"} to Claude`;
+    button.setAttribute("aria-label", label);
+    button.querySelector("span")!.textContent = button.classList.contains("wide") ? label : `Send ${drafts}`;
+  });
   drawCommentList();
 });
 

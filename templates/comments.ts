@@ -1,6 +1,8 @@
 // Comments on the flow, left in the player: pick anything on the page, say what's wrong with it, and
 // it goes to `.prototype/comments.jsonl` for Claude Code (or any agent) to act on. Pins mark them on
 // the page; an agent's replies and resolutions (comment.mjs) show up on the pin, and you can answer.
+// A new comment is a draft until it's sent: pile them up going through the flow, then send them all
+// in one go, and the agent gets them as one list.
 import { selectorFor } from "./checks";
 import { icon } from "./icons";
 
@@ -13,13 +15,13 @@ export type Comment = {
   url: string;
   target?: { selector: string; text: string; html: string };
   viewport?: string;
-  status: "open" | "resolved";
+  status: "draft" | "open" | "resolved";
   replies: { by: string; text: string; at: string }[];
   resolvedNote?: string | null;
   at: string;
 };
 type Where = () => { step: string; path: string | null };
-type Timers = { setTimeout: (fn: () => void, ms: number) => number };
+type Timers = { setTimeout: (fn: () => void, ms: number) => number; clearTimeout: (id: number) => void };
 
 const escape = (text: string) =>
   text.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] ?? c);
@@ -49,7 +51,8 @@ export const setUpComments = (root: ShadowRoot, host: HTMLElement, where: Where,
   let comments: Comment[] = [];
   let picking = false;
   let openId: string | null = null;
-  const listeners: ((open: number) => void)[] = [];
+  const listeners: ((open: number, drafts: number) => void)[] = [];
+  const drafts = () => comments.filter((c) => c.status === "draft");
 
   const load = async () => {
     try {
@@ -59,7 +62,7 @@ export const setUpComments = (root: ShadowRoot, host: HTMLElement, where: Where,
     }
     drawPins();
     const open = comments.filter((c) => c.status === "open").length;
-    listeners.forEach((listener) => listener(open));
+    listeners.forEach((listener) => listener(open, drafts().length));
     // A thread that's open on screen picks up a new reply.
     if (openId) refreshThread();
   };
@@ -123,7 +126,22 @@ export const setUpComments = (root: ShadowRoot, host: HTMLElement, where: Where,
     `<div class="message"><span class="avatar ${by && by !== "you" ? "agent" : ""}">${initial(by)}</span>
       <span class="body"><span class="meta"><b>${escape(who(by))}</b> ${ago(at)}</span><span>${escape(text)}</span></span></div>`;
 
+  const sendLabel = () => {
+    const count = drafts().length;
+    return `Send ${count === 1 ? "it" : `all ${count}`} to Claude`;
+  };
+  // A draft: still the person's own, so it can be edited or thrown away, and sent with the rest.
+  const draftHtml = (comment: Comment) =>
+    `<header><b>Comment ${comments.indexOf(comment) + 1}</b><span class="tag draft">Draft</span>
+        <span class="spacer"></span>
+        <button data-c="delete" class="icon" aria-label="Delete" title="Delete">${icon.trash}</button>
+        <button data-c="close" class="icon" aria-label="Close">${icon.close}</button></header>
+      <div class="compose"><textarea rows="2" aria-label="Comment">${escape(comment.text)}</textarea></div>
+      <p class="hint">Not sent yet. Edits save as you type.</p>
+      <div class="actions"><button data-c="sendAll" class="primary">${icon.send} ${sendLabel()}</button></div>`;
+
   const threadHtml = (comment: Comment) => {
+    if (comment.status === "draft") return draftHtml(comment);
     const number = comments.indexOf(comment) + 1;
     return `<header><b>Comment ${number}</b>${comment.status === "resolved" ? `<span class="tag">Resolved</span>` : ""}
         <span class="spacer"></span>
@@ -161,6 +179,7 @@ export const setUpComments = (root: ShadowRoot, host: HTMLElement, where: Where,
   function wireThread(box: HTMLElement, comment: Comment) {
     box.dataset.for = comment.id;
     const field = box.querySelector("textarea")!;
+    if (comment.status === "draft") return wireDraft(box, comment, field);
     const send = async () => {
       const text = field.value.trim();
       if (!text) return;
@@ -190,6 +209,50 @@ export const setUpComments = (root: ShadowRoot, host: HTMLElement, where: Where,
       field.style.height = `${Math.min(field.scrollHeight, 120)}px`;
     };
   }
+  function wireDraft(box: HTMLElement, comment: Comment, field: HTMLTextAreaElement) {
+    // Saved when the person stops typing, or leaves the card.
+    let saved = comment.text;
+    const save = async () => {
+      const text = field.value.trim();
+      if (!text || text === saved) return;
+      saved = text;
+      await post({ type: "edit", id: comment.id, by: "you", text });
+    };
+    let pending = 0;
+    field.oninput = () => {
+      real.clearTimeout(pending);
+      pending = real.setTimeout(() => void save(), 600);
+    };
+    box.onclick = async (event) => {
+      const action = (event.target as HTMLElement).closest<HTMLElement>("[data-c]")?.dataset.c;
+      if (action === "delete") {
+        real.clearTimeout(pending);
+        closeThread();
+        await post({ type: "delete", id: comment.id, by: "you" });
+      }
+      if (action === "close") {
+        await save();
+        closeThread();
+      }
+      if (action === "sendAll") {
+        await save();
+        closeThread();
+        await sendDrafts();
+      }
+    };
+    field.onkeydown = async (event) => {
+      if (event.key === "Escape" || (event.key === "Enter" && !event.shiftKey)) {
+        event.preventDefault();
+        await save();
+        closeThread();
+      }
+    };
+  }
+  /** Every draft, sent as one batch: the agent gets them together. */
+  const sendDrafts = async () => {
+    const ids = drafts().map((c) => c.id);
+    if (ids.length) await post({ type: "send", ids, by: "you" });
+  };
   const closeThread = () => {
     openId = null;
     root.querySelector(".thread")?.remove();
@@ -248,9 +311,9 @@ export const setUpComments = (root: ShadowRoot, host: HTMLElement, where: Where,
     const box = card(
       `<header><b>New comment</b><span class="spacer"></span><button data-c="cancel" class="icon" aria-label="Cancel">${icon.close}</button></header>
        <p class="about">On ${text ? `“${escape(text.slice(0, 70))}”` : `this ${el.tagName.toLowerCase()}`}</p>
-       <div class="compose"><textarea rows="2" placeholder="What should change? Claude gets it with this element."></textarea>
-         <button data-c="send" class="send" aria-label="Post">${icon.send}</button></div>
-       <p class="hint">Enter to post · Shift+Enter for a new line</p>`,
+       <div class="compose"><textarea rows="2" placeholder="What should change?"></textarea>
+         <button data-c="send" class="send" aria-label="Add">${icon.check}</button></div>
+       <p class="hint">Enter to add it · it waits with the others until you send them</p>`,
       el.getBoundingClientRect()
     );
     const field = box.querySelector("textarea")!;
@@ -260,6 +323,7 @@ export const setUpComments = (root: ShadowRoot, host: HTMLElement, where: Where,
       const here = where();
       await post({
         type: "comment",
+        draft: true,
         by: "you",
         text: field.value.trim(),
         step: here.step,
@@ -297,6 +361,7 @@ export const setUpComments = (root: ShadowRoot, host: HTMLElement, where: Where,
     redraw: drawPins,
     open: openThread,
     all: () => comments,
-    onChange: (listener: (open: number) => void) => listeners.push(listener),
+    sendDrafts,
+    onChange: (listener: (open: number, drafts: number) => void) => listeners.push(listener),
   };
 };

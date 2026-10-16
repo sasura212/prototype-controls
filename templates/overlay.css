@@ -230,6 +230,65 @@ textarea:focus-visible {
   display: none;
 }
 
+/* Drafts waiting to go: the one loud thing on the bar while there are any. */
+.tools .sendComments,
+.tools .sendComments:hover:not(:disabled) {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  width: auto;
+  padding: 0 10px 0 8px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--ground);
+  font-weight: 600;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.tools .sendComments[hidden],
+.wide[hidden] {
+  display: none;
+}
+
+.wide.primary {
+  background: var(--accent);
+  color: var(--ground);
+  font-weight: 600;
+}
+
+/* A draft's pin: dashed, not yet sent. */
+.pinDot.draft {
+  border: 1.5px dashed var(--accent);
+  background: transparent;
+  color: var(--accent);
+}
+
+.pin.draft {
+  border: 2px dashed var(--accent);
+  background: #fff;
+  color: #3056c8;
+}
+
+.thread .actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 10px 10px;
+}
+
+.thread .primary {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: var(--card-ink);
+  color: var(--card);
+  font-weight: 600;
+  font-size: 12px;
+}
+
 /* ---------------------------------------------------------------- minimized */
 .mini {
   position: fixed;
@@ -648,6 +707,11 @@ select {
   color: #067647;
   font-size: 11px;
   font-weight: 500;
+}
+
+.thread .tag.draft {
+  background: var(--card-field);
+  color: var(--card-ink-2);
 }
 
 .thread .icon {
