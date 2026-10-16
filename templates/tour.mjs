@@ -193,7 +193,7 @@ export const runTour = async ({ origin, width = 1440, height = 900, scale = 2, o
         return (await page("Page.captureScreenshot", { format: "png" })).data;
       }
     };
-    const shoot = async (name, kind, title) => {
+    const shoot = async (name, kind, title, pathId) => {
       const issues = JSON.parse((await evaluate("JSON.stringify(__prototype.audit())")) ?? "[]");
       await evaluate("__prototype.setHidden(true)");
       await sleep(150);
@@ -210,7 +210,7 @@ export const runTour = async ({ origin, width = 1440, height = 900, scale = 2, o
       fs.writeFileSync(path.join(runDir, `${name}.png`), png);
       fs.writeFileSync(path.join(latestDir, `${name}.png`), png);
       const before = previous?.shots.find((shot) => shot.name === name)?.file ?? null;
-      shots.push({ name, kind, title, file: `shots/${run}/${name}.png`, before, issues });
+      shots.push({ name, kind, title, file: `shots/${run}/${name}.png`, before, issues, path: pathId });
     };
 
     onProgress({ done: 0, total, label: "Starting from the top" });
@@ -237,7 +237,8 @@ export const runTour = async ({ origin, width = 1440, height = 900, scale = 2, o
       await sleep(1500);
       await player();
       await settled();
-      await shoot(`error-${item.id}`, "error", item.label);
+      // The id is the script's, so it goes into a file name only as a slug: "../" can't leave shots/.
+      await shoot(`error-${slug(item.id)}`, "error", item.label, item.id);
     }
 
     const manifest = { run, at: new Date().toISOString(), viewport: `${width} × ${height} at ${scale}×`, shots };

@@ -22,16 +22,21 @@ import { fileURLToPath } from "node:url";
 
 export const FILE = path.join(path.dirname(fileURLToPath(import.meta.url)), "comments.jsonl");
 
+/** Every event in the file. A line that doesn't parse (half-written, damaged) is skipped, not the whole file. */
 export const readEvents = () => {
+  let text;
   try {
-    return fs
-      .readFileSync(FILE, "utf8")
-      .split("\n")
-      .filter(Boolean)
-      .map((line) => JSON.parse(line));
+    text = fs.readFileSync(FILE, "utf8");
   } catch {
     return [];
   }
+  return text.split("\n").flatMap((line) => {
+    try {
+      return line ? [JSON.parse(line)] : [];
+    } catch {
+      return [];
+    }
+  });
 };
 
 export const append = (event) => {
@@ -111,9 +116,13 @@ if (isMain) {
     // New events only: everything already in the file has been seen.
     let seen = readEvents().length;
     if (!fs.existsSync(FILE)) fs.writeFileSync(FILE, "");
+    let size = fs.statSync(FILE).size;
     const check = () => {
       const events = readEvents();
-      if (events.length < seen) seen = events.length;
+      // Only a file that got smaller was rewritten (cleared, trimmed): what's in it now isn't news.
+      const now = fs.existsSync(FILE) ? fs.statSync(FILE).size : 0;
+      if (now < size) seen = events.length;
+      size = now;
       for (const event of events.slice(seen)) {
         // A batch sent: one message with every comment in it, so the agent sees the whole list at once.
         if (event.type === "send") {
@@ -130,7 +139,7 @@ if (isMain) {
         // Their answer on a thread is for the agent too; the agent's own replies aren't news to it.
         if (event.type === "reply" && event.by === "you") console.log(`${event.id} reply from you: “${event.text}”`);
       }
-      seen = events.length;
+      seen = Math.max(seen, events.length);
     };
     // A file watch plus a timer: the watch can miss a write that lands as it starts.
     fs.watchFile(FILE, { interval: 500 }, check);
