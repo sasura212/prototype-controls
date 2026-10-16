@@ -35,10 +35,10 @@ person reads, so the flow doesn't know it's there.
 
 ```bash
 # Into a project (shared with everyone who clones it)
-npx skills add <owner>/<repo>
+npx skills add sasura212/prototype-controls
 
 # Just for you, in every project
-cp -r prototype-controls ~/.claude/skills/
+git clone https://github.com/sasura212/prototype-controls ~/.claude/skills/prototype-controls
 ```
 
 ## Use
