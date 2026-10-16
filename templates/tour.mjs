@@ -75,10 +75,18 @@ const connect = async (wsUrl) => {
     if (message.error) pending.reject(new Error(message.error.message));
     else pending.resolve(message.result);
   });
-  const send = (method, params = {}, sessionId) =>
+  // Every command gives up after a while: one Chrome never answers shouldn't hang the whole tour.
+  const send = (method, params = {}, sessionId, timeoutMs = 30_000) =>
     new Promise((resolve, reject) => {
       const id = nextId++;
-      waiting.set(id, { resolve, reject });
+      const timer = setTimeout(() => {
+        waiting.delete(id);
+        reject(new Error(`${method} timed out`));
+      }, timeoutMs);
+      waiting.set(id, {
+        resolve: (value) => (clearTimeout(timer), resolve(value)),
+        reject: (error) => (clearTimeout(timer), reject(error)),
+      });
       socket.send(JSON.stringify({ id, method, params, sessionId }));
     });
   return { send, close: () => socket.close() };
@@ -176,11 +184,27 @@ export const runTour = async ({ origin, width = 1440, height = 900, scale = 2, o
     fs.mkdirSync(latestDir, { recursive: true });
 
     const shots = [];
+    const capture = async () => {
+      try {
+        return (await page("Page.captureScreenshot", { format: "png" })).data;
+      } catch {
+        // A page that won't give a frame: one more try after a moment.
+        await sleep(1000);
+        return (await page("Page.captureScreenshot", { format: "png" })).data;
+      }
+    };
     const shoot = async (name, kind, title) => {
       const issues = JSON.parse((await evaluate("JSON.stringify(__prototype.audit())")) ?? "[]");
       await evaluate("__prototype.setHidden(true)");
       await sleep(150);
-      const { data } = await page("Page.captureScreenshot", { format: "png" });
+      let data;
+      try {
+        data = await capture();
+      } catch (error) {
+        onProgress({ label: `Couldn't take “${title}”: ${error.message}. Skipped.` });
+        await evaluate("__prototype.setHidden(false)");
+        return;
+      }
       await evaluate("__prototype.setHidden(false)");
       const png = Buffer.from(data, "base64");
       fs.writeFileSync(path.join(runDir, `${name}.png`), png);
@@ -243,7 +267,8 @@ if (isMain) {
     width: option("width", 1440),
     height: option("height", 900),
     scale: option("scale", 2),
-    onProgress: ({ done, total, label }) => console.log(`[${done}/${total}] ${label}`),
+    onProgress: ({ done, total, label }) =>
+      console.log(`${new Date().toLocaleTimeString()} ${done === undefined ? "" : `[${done}/${total}] `}${label}`),
   }).then(
     (manifest) => console.log(`Done: .prototype/shots/${manifest.run}/ (open /__prototype/sheet to review)`),
     (error) => {
