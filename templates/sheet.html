@@ -3,161 +3,585 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Contact sheet</title>
+    <title>Flow review</title>
     <style>
       :root {
         --ink: #101828;
         --ink-2: #475467;
-        --line: #e4e7ec;
-        --ground: #f2f4f7;
+        --ink-3: #98a2b3;
+        --line: #eaecf0;
+        --ground: #f5f6f8;
+        --surface: #fff;
+        --sunken: #eef0f3;
         --accent: #2970ff;
+        --accent-tint: #eff4ff;
+        --change: #b42318;
+        --change-tint: #fef3f2;
+        --slight: #475467;
         --warn: #b54708;
-        --warn-bg: #fffaeb;
-        --change: #d92d20;
+        --warn-tint: #fffaeb;
+        --ok: #067647;
+        --ok-tint: #ecfdf3;
+        --shadow: 0 1px 2px rgb(16 24 40 / 0.06), 0 8px 24px rgb(16 24 40 / 0.08);
       }
       * {
         box-sizing: border-box;
       }
+      html,
       body {
+        height: 100%;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
         margin: 0;
-        padding: 24px 16px 48px;
         background: var(--ground);
         color: var(--ink);
         font:
           13px/1.45 system-ui,
+          -apple-system,
+          "Segoe UI",
           sans-serif;
+        -webkit-font-smoothing: antialiased;
       }
-      header,
-      section {
-        max-width: 1200px;
-        margin: 0 auto 24px;
+      button {
+        border: 0;
+        background: none;
+        color: inherit;
+        font: inherit;
+        cursor: pointer;
       }
-      h1 {
-        margin: 0 0 4px;
-        font-size: 20px;
+      button:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
       }
-      h2 {
-        margin: 0 0 12px;
+      [hidden] {
+        display: none !important;
+      }
+
+      /* ------------------------------------------------------------ top bar */
+      .top {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px 16px;
+        align-items: center;
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--line);
+        background: var(--surface);
+      }
+      .title h1 {
+        margin: 0;
         font-size: 15px;
+        font-weight: 600;
       }
-      .meta {
+      .title p {
+        margin: 2px 0 0;
+        color: var(--ink-3);
+        font-size: 12px;
+      }
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-left: auto;
+      }
+      .chip {
+        display: inline-flex;
+        gap: 6px;
+        align-items: center;
+        height: 30px;
+        padding: 0 12px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: var(--surface);
         color: var(--ink-2);
       }
-      .grid {
+      .chip b {
+        color: var(--ink);
+        font-variant-numeric: tabular-nums;
+      }
+      .chip[aria-pressed="true"] {
+        border-color: var(--accent);
+        background: var(--accent-tint);
+        color: var(--accent);
+      }
+      .chip[aria-pressed="true"] b {
+        color: var(--accent);
+      }
+      .segmented {
+        display: flex;
+        gap: 2px;
+        padding: 2px;
+        border-radius: 9px;
+        background: var(--sunken);
+      }
+      .segmented button {
+        height: 28px;
+        padding: 0 12px;
+        border-radius: 7px;
+        color: var(--ink-2);
+      }
+      .segmented [aria-pressed="true"] {
+        background: var(--surface);
+        color: var(--ink);
+        box-shadow: 0 1px 2px rgb(16 24 40 / 0.1);
+      }
+
+      /* ------------------------------------------------------------ review layout */
+      .review {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-        gap: 16px;
+        flex: 1;
+        grid-template-columns: 280px minmax(0, 1fr) 300px;
+        min-height: 0;
       }
-      .card {
-        overflow: hidden;
-        border-radius: 12px;
-        background: #fff;
-        box-shadow: 0 1px 3px rgb(0 0 0 / 0.08);
+      .rail,
+      .inspector {
+        overflow: auto;
+        background: var(--surface);
       }
-      .card img {
-        display: block;
+      .rail {
+        border-right: 1px solid var(--line);
+      }
+      .inspector {
+        border-left: 1px solid var(--line);
+      }
+      .group {
+        padding: 12px 8px 4px;
+      }
+      .group h2 {
+        display: flex;
+        justify-content: space-between;
+        margin: 0 8px 6px;
+        color: var(--ink-3);
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+      .row {
+        position: relative;
+        display: grid;
+        grid-template-columns: 64px minmax(0, 1fr);
+        gap: 10px;
+        align-items: center;
         width: 100%;
-        border-bottom: 1px solid var(--line);
+        padding: 6px 8px;
+        border-radius: 8px;
+        text-align: left;
+      }
+      .row:hover {
+        background: var(--ground);
+      }
+      .row[aria-current="true"] {
+        background: var(--accent-tint);
+      }
+      .row[aria-current="true"]::before {
+        content: "";
+        position: absolute;
+        top: 8px;
+        bottom: 8px;
+        left: 0;
+        width: 3px;
+        border-radius: 999px;
+        background: var(--accent);
+      }
+      .thumb {
+        display: block;
+        width: 64px;
+        height: auto;
+        min-height: 36px;
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        background: var(--sunken);
+      }
+      .rowText {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        min-width: 0;
+      }
+      .rowTitle {
+        overflow: hidden;
+        font-weight: 500;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+      .reviewed .rowTitle {
+        color: var(--ink-3);
+      }
+      .marks {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+      }
+      .mark {
+        padding: 0 6px;
+        border-radius: 999px;
+        font-size: 11px;
+        line-height: 18px;
+        white-space: nowrap;
+      }
+      .mark.changed {
+        background: var(--change-tint);
+        color: var(--change);
+      }
+      .mark.slight,
+      .mark.new {
+        background: var(--sunken);
+        color: var(--slight);
+      }
+      .mark.issues {
+        background: var(--warn-tint);
+        color: var(--warn);
+      }
+      .mark.comments {
+        background: var(--accent-tint);
+        color: var(--accent);
+      }
+      .mark.done {
+        background: var(--ok-tint);
+        color: var(--ok);
+      }
+
+      /* ------------------------------------------------------------ stage */
+      .stage {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        min-height: 0;
+      }
+      .stageBar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 12px;
+        align-items: center;
+        padding: 10px 16px;
+      }
+      .stageTitle {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        margin-right: auto;
+      }
+      .stageTitle b {
+        font-size: 14px;
+      }
+      .stageTitle span {
+        color: var(--ink-3);
+        font-size: 12px;
+      }
+      .nav {
+        display: flex;
+        gap: 4px;
+      }
+      .iconButton {
+        display: grid;
+        place-items: center;
+        width: 30px;
+        height: 30px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface);
+      }
+      .iconButton:hover:not(:disabled) {
+        background: var(--ground);
+      }
+      .iconButton:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+      .canvas {
+        position: relative;
+        display: grid;
+        flex: 1;
+        place-items: center;
+        min-height: 0;
+        overflow: auto;
+        padding: 8px 24px 24px;
+      }
+      .shot {
+        display: block;
+        border-radius: 8px;
+        background: var(--surface);
+        box-shadow: var(--shadow);
         cursor: zoom-in;
       }
-      .card .body {
+      .actual .shot {
+        max-width: none;
+        max-height: none;
+        cursor: zoom-out;
+      }
+      .pair {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        width: 100%;
+        height: 100%;
+      }
+      .pair figure {
         display: flex;
         flex-direction: column;
         gap: 6px;
-        padding: 10px 12px 12px;
-      }
-      .title {
-        display: flex;
-        gap: 8px;
-        align-items: baseline;
-        justify-content: space-between;
-        font-weight: 600;
-      }
-      .badge {
-        flex-shrink: 0;
-        padding: 1px 6px;
-        border-radius: 999px;
-        background: var(--ground);
-        color: var(--ink-2);
-        font-size: 11px;
-        font-weight: 500;
-      }
-      .badge.changed {
-        background: #fef3f2;
-        color: var(--change);
-        cursor: pointer;
-      }
-      ul {
+        min-width: 0;
+        min-height: 0;
         margin: 0;
-        padding-left: 16px;
       }
-      .issues {
-        color: var(--warn);
+      .pair figcaption {
+        color: var(--ink-3);
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
       }
-      table {
-        width: 100%;
-        max-width: 480px;
-        border-collapse: collapse;
-        background: #fff;
-        border-radius: 12px;
-        overflow: hidden;
-      }
-      td {
-        padding: 6px 12px;
-        border-bottom: 1px solid var(--line);
-      }
-      td:last-child {
-        text-align: right;
-        font-variant-numeric: tabular-nums;
-      }
-      .comment {
-        margin-bottom: 8px;
-        padding: 10px 12px;
+      .pair img {
+        max-width: 100%;
+        max-height: calc(100% - 22px);
+        object-fit: contain;
         border-radius: 8px;
-        background: #fff;
+        box-shadow: var(--shadow);
       }
-      .comment .where {
-        color: var(--ink-2);
-        font-size: 12px;
+      /* Slider: the after image clipped to the divider, over the before. */
+      .slider {
+        position: relative;
+        max-width: 100%;
+        max-height: 100%;
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: var(--shadow);
+        cursor: ew-resize;
+        touch-action: none;
+        user-select: none;
+      }
+      .slider img {
+        display: block;
+        pointer-events: none;
+      }
+      .slider .after {
+        position: absolute;
+        inset: 0;
+        clip-path: inset(0 0 0 var(--split, 50%));
+      }
+      .slider .divider {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: var(--split, 50%);
+        width: 2px;
+        background: #fff;
+        box-shadow: 0 0 0 1px rgb(16 24 40 / 0.2);
+        transform: translateX(-1px);
+      }
+      .slider .divider::after {
+        content: "⇆";
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        display: grid;
+        place-items: center;
+        width: 30px;
+        height: 30px;
+        border-radius: 999px;
+        background: #fff;
+        box-shadow: var(--shadow);
+        color: var(--ink);
+        transform: translate(-50%, -50%);
+      }
+      .slider .label {
+        position: absolute;
+        top: 10px;
+        padding: 2px 8px;
+        border-radius: 6px;
+        background: rgb(16 24 40 / 0.7);
+        color: #fff;
+        font-size: 11px;
       }
       .empty {
+        color: var(--ink-3);
+        text-align: center;
+      }
+      .hint {
+        position: absolute;
+        right: 16px;
+        bottom: 8px;
+        color: var(--ink-3);
+        font-size: 11px;
+      }
+
+      /* ------------------------------------------------------------ inspector */
+      .section {
+        padding: 14px 16px;
+        border-bottom: 1px solid var(--line);
+      }
+      .section h3 {
+        margin: 0 0 8px;
+        color: var(--ink-3);
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+      .section p {
+        margin: 0;
         color: var(--ink-2);
       }
-      dialog {
-        max-width: 95vw;
-        padding: 0;
-        border: 0;
-        border-radius: 12px;
+      .big {
+        font-size: 20px;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
       }
-      dialog img {
+      .list {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+      .issue {
+        padding: 8px 10px;
+        border-radius: 8px;
+        background: var(--warn-tint);
+        color: var(--warn);
+      }
+      .comment {
+        padding: 8px 10px;
+        border-radius: 8px;
+        background: var(--ground);
+      }
+      .comment small {
         display: block;
-        max-width: 95vw;
-        max-height: 90vh;
+        color: var(--ink-3);
+      }
+      .comment .reply {
+        display: -webkit-box;
+        margin-top: 6px;
+        overflow: hidden;
+        padding-left: 8px;
+        border-left: 2px solid var(--line);
+        color: var(--ink-2);
+        cursor: pointer;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 4;
+      }
+      /* A long reply opens on click. */
+      .comment .reply.open {
+        display: block;
+      }
+      .timebar {
+        height: 6px;
+        margin-top: 8px;
+        border-radius: 999px;
+        background: var(--sunken);
+      }
+      .timebar span {
+        display: block;
+        height: 100%;
+        border-radius: 999px;
+        background: var(--accent);
+      }
+      .timebar.slowest span {
+        background: var(--warn);
+      }
+      .reviewButton {
+        width: 100%;
+        height: 36px;
+        border-radius: 9px;
+        background: var(--ink);
+        color: #fff;
+        font-weight: 500;
+      }
+      .reviewButton.isDone {
+        background: var(--ok-tint);
+        color: var(--ok);
+      }
+
+      /* ------------------------------------------------------------ grid view */
+      .grid {
+        flex: 1;
+        overflow: auto;
+        padding: 20px 24px 40px;
+      }
+      .grid h2 {
+        margin: 8px 0 12px;
+        font-size: 13px;
+      }
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 16px;
+        margin-bottom: 24px;
+      }
+      .card {
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        border-radius: 12px;
+        background: var(--surface);
+        box-shadow: var(--shadow);
+        text-align: left;
+      }
+      .card .thumb {
+        width: 100%;
+        border: 0;
+        border-bottom: 1px solid var(--line);
+        border-radius: 0;
+      }
+      .card .rowText {
+        padding: 10px 12px 12px;
+      }
+      .card:hover {
+        box-shadow:
+          0 0 0 2px var(--accent),
+          var(--shadow);
+      }
+      .nothing {
+        display: grid;
+        flex: 1;
+        place-items: center;
+        color: var(--ink-2);
+      }
+
+      @media (max-width: 1100px) {
+        .review {
+          grid-template-columns: 240px minmax(0, 1fr);
+        }
+        .inspector {
+          display: none;
+        }
       }
     </style>
   </head>
   <body>
-    <header>
-      <h1>Contact sheet</h1>
-      <p class="meta" id="meta">Loading…</p>
+    <header class="top">
+      <div class="title">
+        <h1>Flow review</h1>
+        <p id="meta">Loading…</p>
+      </div>
+      <div class="chips" role="group" aria-label="Show"></div>
+      <div class="segmented" role="group" aria-label="View">
+        <button data-view="review" aria-pressed="true">Review</button>
+        <button data-view="grid" aria-pressed="false">Grid</button>
+      </div>
     </header>
-    <section>
-      <h2>Steps</h2>
-      <div class="grid" id="steps"></div>
-    </section>
-    <section>
-      <h2>Errors and edge cases</h2>
-      <div class="grid" id="errors"></div>
-    </section>
-    <section>
-      <h2>Timing at 1×</h2>
-      <div id="timing"></div>
-    </section>
-    <section>
-      <h2>Comments</h2>
-      <div id="comments"></div>
-    </section>
-    <dialog id="zoom"><img alt="" /></dialog>
+
+    <main class="review" id="review">
+      <nav class="rail" aria-label="Screens"></nav>
+      <section class="stage" aria-live="polite">
+        <div class="stageBar">
+          <div class="stageTitle"><b id="stageTitle"></b><span id="stageSub"></span></div>
+          <div class="segmented" id="compare" role="group" aria-label="Compare"></div>
+          <div class="nav">
+            <button class="iconButton" id="prev" aria-label="Previous screen">←</button>
+            <button class="iconButton" id="next" aria-label="Next screen">→</button>
+          </div>
+        </div>
+        <div class="canvas" id="canvas"></div>
+      </section>
+      <aside class="inspector" id="inspector" aria-label="About this screen"></aside>
+    </main>
+
+    <main class="grid" id="grid" hidden></main>
+    <div class="nothing" id="nothing" hidden>No tour yet. In the studio, press “Screenshot every step and error”.</div>
     <script type="module" src="/.prototype/sheet.ts"></script>
   </body>
 </html>

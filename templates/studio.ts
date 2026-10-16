@@ -320,7 +320,7 @@ tourButton.addEventListener("click", async () => {
     const changed = shots.filter((shot) => (shot.diff ?? 0) >= 5).length;
     const flagged = shots.reduce((sum, shot) => sum + shot.issues.length, 0);
     say(
-      `${shots.length} screens saved · ${changed} changed since last time · ${flagged} things to check · <a href="/__prototype/sheet" target="_blank">Open the contact sheet</a>`
+      `${shots.length} screens saved · ${changed} changed since last time · ${flagged} things to check · <a href="/__prototype/sheet" target="_blank">Open the review</a>`
     );
   } catch (error) {
     say(`Stopped: ${error instanceof Error ? error.message : String(error)}`);

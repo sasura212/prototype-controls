@@ -3,7 +3,7 @@
 //
 // It also serves the player's own pages and saves what the player makes, all inside `.prototype/`:
 //   /__prototype/studio       the app in a frame: viewport sizes, recording, the screenshot tour
-//   /__prototype/sheet        the contact sheet from the last screenshot tour
+//   /__prototype/sheet        the flow review from the last screenshot tour
 //   /__prototype/comments     GET the comments, POST a comment, reply, resolve (see comment.mjs)
 //   /__prototype/file?path=   GET or POST a file under .prototype/ (screenshots, recordings, reports)
 //   /__prototype/list?dir=    the files in a folder under .prototype/

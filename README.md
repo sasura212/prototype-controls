@@ -40,8 +40,11 @@ Run `/prototype-controls` on a flow and Claude adds a dark player bar to the pag
 - The **studio** (`/__prototype/studio`) shows the flow at any size: drag the frame's edges or
   corner, type a width and height, or pick a device. A device bigger than the window is scaled to
   fit. It **records** a play-through to MP4 and **screenshots every step and every error** in one go.
-- The **contact sheet** (`/__prototype/sheet`) lays those screenshots out with what changed since
-  the last run, what the checks found, the timings and the comments.
+- The **flow review** (`/__prototype/sheet`) goes through those screenshots one by one: steps and
+  errors in a list, the screen large in the middle, and when it changed since the last tour, side
+  by side, a before/after slider, or the changes marked. Beside it: what the checks found, its
+  comments and how long the step takes. Filter to what changed or needs checking, tick screens off
+  as you review them, or see them all in a grid.
 
 **When a step breaks**, because you renamed a button say, the player shows what's on screen that
 looks like it. Pick one and it carries on; Claude folds the fix into the script later.
@@ -108,7 +111,7 @@ browser. See the top of `templates/comment.mjs`.
 | `templates/overlay.ts` + `overlay.css`  | The player, the page's clock, and the ⚗ panel                           |
 | `templates/comments.ts` + `comment.mjs` | Comments on the page, and their store and command line                  |
 | `templates/checks.ts`                   | Check this screen                                                       |
-| `templates/studio.*` + `sheet.*`        | The studio and the contact sheet                                        |
+| `templates/studio.*` + `sheet.*`        | The studio and the flow review                                          |
 | `templates/vite.config.mjs`             | Adds the player to the page, and saves what it makes into `.prototype/` |
 | `templates/check-wait.js`               | What Claude runs in the browser to check each step and error            |
 | `templates/script.ts`                   | An example script                                                       |
